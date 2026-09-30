@@ -1,0 +1,31 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# Termux:Boot entrypoint; also safe to execute manually.
+PATH=/data/data/com.termux/files/usr/bin:/system/bin
+export PATH
+umask 077
+bridge_dir=/data/data/com.termux/files/home/codex-bridge
+mkdir -p "$bridge_dir/logs" || exit 1
+exec >> "$bridge_dir/logs/autostart.log" 2>&1
+stamp() { date -Iseconds; }
+printf '%s autostart requested pid=%s\n' "$(stamp)" "$$"
+exec 9> "$bridge_dir/autostart.lock" || exit 1
+if ! flock -n 9; then
+    printf '%s autostart already in progress; skipped\n' "$(stamp)"
+    exit 0
+fi
+# Bounded delay; the remote worker retries network errors itself.
+sleep 20
+if timeout 15 termux-wake-lock 9>&-; then
+    printf '%s wake lock requested\n' "$(stamp)"
+else
+    printf '%s WARNING: wake lock unavailable; check Android battery settings\n' "$(stamp)"
+fi
+cd "$bridge_dir" || exit 1
+# Close the boot lock in descendants. remote start has its own worker lock.
+if ./remote start 9>&-; then
+    ./remote status 9>&-
+    printf '%s autostart finished\n' "$(stamp)"
+else
+    printf '%s ERROR: remote start failed\n' "$(stamp)"
+    exit 1
+fi

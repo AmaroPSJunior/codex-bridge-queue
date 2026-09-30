@@ -49,7 +49,7 @@ cd "$HOME/codex-bridge"
 
 Arquivos locais, excluídos do Git: `remote.pid`, `remote-worker.lock`, `remote-heartbeat.json`, `remote-thread-id`, `remote-state/NUMERO.json`, `.stdout`, `.stderr`, `logs/remote-worker.log`. O log é JSON por linha; os resultados completos ficam em disco. Preserve `remote-state/` em backups: contém as barreiras contra reexecução. O worker consulta a cada 15 segundos; erros de rede geram espera progressiva até 300 segundos. O heartbeat registra a última consulta bem-sucedida. Os logs e resultados permanecem locais e precisam de limpeza/arquivamento conforme o volume.
 
-O Termux precisa permanecer em execução, com rede e sem restrição de bateria que suspenda o processo. Background não significa reinício automático após reboot/encerramento forçado pelo Android; nesse caso execute `./remote start` novamente. A configuração não altera inicialização do Android nem outros projetos.
+O Termux precisa permanecer em execução, com rede e sem restrição de bateria que suspenda o processo. O autostart após reboot está preparado conforme a seção abaixo e depende da ativação do Termux:Boot. Encerramento forçado pelo Android não é recuperado pelo script de boot; nesse caso execute `./remote start` novamente. A configuração não altera inicialização do Android nem outros projetos.
 
 ## Estados e recuperação
 
@@ -76,3 +76,28 @@ Backup anterior às alterações: `$HOME/codex-bridge-backup-20260930-before-git
 Validação completa em 30/09/2026: o app GitHub criou a [issue #2](https://github.com/AmaroPSJunior/codex-bridge-queue/issues/2), o worker no Termux chamou a ponte, o Codex concluiu o turno e o worker publicou `PONTE REMOTA FUNCIONANDO`. O app leu o comentário de resultado e confirmou a issue fechada com `codex:done`. O estado local registrou exatamente uma execução, sem erro. A rejeição de escrita observada na sessão anterior não se repetiu; nenhuma renovação de token foi necessária. Novas sessões continuam sujeitas às permissões do conector.
 
 A integração existente segue `thread/start`/`thread/resume` e `turn/start`; só `turn.status=completed` é sucesso, conforme a [documentação oficial OpenAI](https://developers.openai.com/siwc/token-sharing-open-source/codex-app-server).
+
+## Inicialização automática no Android
+
+Mecanismo: [Termux:Boot oficial](https://github.com/termux/termux-boot), sem root, cron, SSH ou novos serviços de rede. O script versionado `autostart/20-codex-bridge` foi instalado como `~/.termux/boot/20-codex-bridge` (modo 700). Ele aguarda 20 segundos, solicita `termux-wake-lock` e chama os comandos existentes `remote start` e `remote status`. O worker tenta novamente quando a conectividade voltar. A ponte existente inicia o app-server em loopback sob demanda na primeira tarefa; não se inicia o worker local de inbox.
+
+O lock `autostart.lock` impede inicializações simultâneas; o lock existente `remote-worker.lock` impede workers duplicados inclusive em chamadas posteriores. O descritor do lock de boot é fechado nos processos filhos. Threads, autenticação e estado da fila são preservados. Não há credenciais no script. Logs de inicialização: `logs/autostart.log`; logs de operação: `logs/remote-worker.log`. O wake lock mantém a CPU disponível e pode aumentar o consumo de bateria.
+
+**Ativação Android pendente em 30/09/2026:** foi confirmado Termux F-Droid 0.118.3 no usuário Android 0 e ausência de `com.termux.boot` nesse perfil. Instale [Termux:Boot pelo F-Droid](https://f-droid.org/packages/com.termux.boot/) no mesmo perfil do Termux e abra seu ícone uma vez. Use a mesma origem F-Droid para compatibilidade de assinatura; não desinstale o Termux. Nas configurações Android/Xiaomi, permita inicialização automática em segundo plano e bateria sem restrições para Termux e Termux:Boot. Os nomes dessas opções podem variar com a versão do sistema.
+
+Depois da ativação, reinicie e desbloqueie o aparelho uma vez para liberar os dados dos aplicativos. Não é necessário abrir o Termux para disparar o script. A execução real após reboot ainda precisa ser verificada; a simulação manual não valida a entrega do evento de boot pelo Android. O mecanismo não recupera encerramento forçado nem garante execução se o fabricante bloquear os aplicativos.
+
+Teste manual sem reboot:
+
+```sh
+~/.termux/boot/20-codex-bridge
+~/.termux/boot/20-codex-bridge
+~/codex-bridge/remote status
+tail -n 40 ~/codex-bridge/logs/autostart.log
+```
+
+Para reinstalar o script após recuperar o projeto, crie `~/.termux/boot`, preserve qualquer arquivo anterior de mesmo nome e copie `autostart/20-codex-bridge` para essa pasta com permissão 700. Para desativar somente esta ponte no boot, mova esse arquivo para fora de `~/.termux/boot`; o worker já ativo continua operando.
+
+Backup anterior à configuração: `~/codex-bridge-backup-20260930-201332-before-autostart.tar.gz`, contendo a ponte e `.termux` anteriores, com permissão 600, fora do Git.
+
+Validação local em 30/09/2026: duas execuções sequenciais do script instalado e uma chamada concorrente passaram. A concorrente saiu pelo lock; as sequenciais encontraram o worker existente. Confirmados exatamente um processo worker, PID 13027 preservado, hashes de `thread-id`, `remote-thread-id` e `remote-config.json` inalterados, heartbeat ativo e registro em `logs/autostart.log`. `npm test` e verificação de sintaxe shell passaram. Não foi reiniciado o celular nem interrompido o worker de produção.

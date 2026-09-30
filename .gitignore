@@ -12,3 +12,5 @@
 !tests/**
 !.github/
 !.github/**
+!autostart/
+!autostart/**
