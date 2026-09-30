@@ -1,0 +1,11 @@
+#!/data/data/com.termux/files/usr/bin/node
+'use strict';
+const fs=require('fs'),path=require('path'),{spawn,spawnSync}=require('child_process');
+const DIR=__dirname, PID=path.join(DIR,'remote.pid'), LOCK=path.join(DIR,'remote-worker.lock');
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function pid(){try{const p=Number(fs.readFileSync(PID,'utf8'));if(p>1 && fs.readFileSync('/proc/'+p+'/cmdline','utf8').includes(path.join(DIR,'remote-worker.js')))return p;}catch{}return null;}
+function locked(){return spawnSync('flock',['-n','-E','73',LOCK,'true']).status===73;}
+async function stop(){const p=pid();if(!p){console.log('Worker parado.');return;}process.kill(p,'SIGTERM');for(let i=0;i<50;i++){if(!pid()){console.log('Worker parado.');return;}await sleep(200);}throw Error('Parada solicitada; tarefa em andamento terminará antes de sair. Consulte status.');}
+async function start(){if(locked()){console.log('Worker já ativo (lock ocupado), PID '+pid());return;}const log=fs.openSync(path.join(DIR,'logs/remote-worker.log'),'a',0o600);const p=spawn('flock',['-n','-E','73',LOCK,process.execPath,path.join(DIR,'remote-worker.js')],{detached:true,stdio:['ignore',log,log],env:{...process.env,CODEX_QUEUE_LOCKED:'1'}});p.on('error',e=>console.error(e.message));p.unref();fs.closeSync(log);for(let i=0;i<25;i++){await sleep(200);if(pid()){console.log('Worker iniciado, PID '+pid());return;}}throw Error('Falha ao iniciar; veja logs/remote-worker.log');}
+async function main(){switch(process.argv[2]){case 'start':await start();break;case 'stop':await stop();break;case 'restart':await stop();await start();break;case 'status':console.log(JSON.stringify({pid:pid(),locked:locked(),heartbeat:fs.existsSync(path.join(DIR,'remote-heartbeat.json'))?JSON.parse(fs.readFileSync(path.join(DIR,'remote-heartbeat.json'))):null},null,2));break;default:console.log('Uso: ./remote start|stop|restart|status');process.exitCode=1;}}
+main().catch(e=>{console.error(e.message);process.exitCode=1;});

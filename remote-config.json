@@ -1,0 +1,6 @@
+{
+  "repository": "AmaroPSJunior/codex-bridge-queue",
+  "allowedAuthors": ["AmaroPSJunior"],
+  "pollSeconds": 15,
+  "maxPromptBytes": 24000
+}

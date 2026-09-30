@@ -1,0 +1,14 @@
+*
+!.gitignore
+!README.md
+!bridge.js
+!worker.js
+!remote
+!remote-worker.js
+!remote-config.json
+!package.json
+!package-lock.json
+!tests/
+!tests/**
+!.github/
+!.github/**
