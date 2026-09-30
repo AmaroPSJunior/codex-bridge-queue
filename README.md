@@ -12,7 +12,7 @@ O fluxo local e seu `thread-id` continuam existentes. A fila usa `remote-thread-
 
 ## ChatGPT: enviar uma tarefa
 
-É necessário que a sessão ChatGPT tenha ferramentas GitHub que **criem Issues e leiam comentários**, com acesso a este repositório privado. Acesso apenas para pesquisa/leitura não basta. Nenhum token deve ser colado no chat. Nesta configuração o app GitHub conseguiu ler os metadados; a criação precisa ser permitida pela aprovação da ferramenta na sessão.
+É necessário que a sessão ChatGPT tenha ferramentas GitHub que **criem Issues e leiam comentários**, com acesso a este repositório privado. Acesso apenas para pesquisa/leitura não basta. Nenhum token deve ser colado no chat. Nesta configuração, a criação de issues e a leitura do resultado pelo app GitHub foram validadas na issue #2. O GitHub CLI no Termux também está autenticado; não há autorização pendente nesta sessão.
 
 1. Gere um `task_id` único (UUID recomendado). Conserve esse ID se houver dúvida sobre o envio.
 2. Use `github_create_issue` com `repository_full_name: "AmaroPSJunior/codex-bridge-queue"`, um título descritivo, `labels: ["codex:queued"]` e `body` contendo somente o JSON abaixo (sem cercas Markdown):
@@ -71,8 +71,8 @@ Para investigar `uncertain`, consulte `remote-state/NUMERO.json`, `.stdout`, `.s
 
 Backup anterior às alterações: `$HOME/codex-bridge-backup-20260930-before-github-queue.tar.gz`. Contém a ponte, dependências e estado anterior. Nunca publique esse backup ou seus arquivos de autenticação.
 
-`python tests/test_remote.py` roda testes isolados com GitHub e executor simulados, sem executar tarefas reais nem tocar na fila de produção. Teste real confirmado em [issue #1](https://github.com/AmaroPSJunior/codex-bridge-queue/issues/1): resposta `PONTE REMOTA FUNCIONANDO` publicada no GitHub e lida pelo app GitHub. A issue foi reaberta/recolocada na fila, o worker foi reiniciado, e permaneceram uma execução e um comentário de resultado. Os testes isolados também validaram task_id duplicado entre issues, prompt literal com metacaracteres, resposta HTTP perdida, lock, entrada inválida e recuperação incerta após queda.
+`npm test` (ou `python tests/test_remote.py`) roda testes isolados com GitHub e executor simulados, sem executar tarefas reais nem tocar na fila de produção. Teste real confirmado em [issue #1](https://github.com/AmaroPSJunior/codex-bridge-queue/issues/1): resposta `PONTE REMOTA FUNCIONANDO` publicada no GitHub e lida pelo app GitHub. A issue foi reaberta/recolocada na fila, o worker foi reiniciado, e permaneceram uma execução e um comentário de resultado. Os testes isolados também validaram task_id duplicado entre issues, prompt literal com metacaracteres, resposta HTTP perdida, lock, entrada inválida e recuperação incerta após queda.
 
-Limitação externa observada: chamadas `github_create_issue` do app retornaram `user rejected MCP tool call`. A issue real foi criada pelo `gh` após autorização renovada do usuário. Para o ChatGPT publicar diretamente, sua sessão precisa permitir essa ação de escrita; a leitura de metadados e comentários pelo app foi validada.
+Validação completa em 30/09/2026: o app GitHub criou a [issue #2](https://github.com/AmaroPSJunior/codex-bridge-queue/issues/2), o worker no Termux chamou a ponte, o Codex concluiu o turno e o worker publicou `PONTE REMOTA FUNCIONANDO`. O app leu o comentário de resultado e confirmou a issue fechada com `codex:done`. O estado local registrou exatamente uma execução, sem erro. A rejeição de escrita observada na sessão anterior não se repetiu; nenhuma renovação de token foi necessária. Novas sessões continuam sujeitas às permissões do conector.
 
 A integração existente segue `thread/start`/`thread/resume` e `turn/start`; só `turn.status=completed` é sucesso, conforme a [documentação oficial OpenAI](https://developers.openai.com/siwc/token-sharing-open-source/codex-app-server).
