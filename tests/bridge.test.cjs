@@ -34,3 +34,31 @@ for(const value of ['1234','60000'])test('Bridge configured timeout '+value,asyn
 for(const value of ['0','-1','invalid','1.5','2147483648'])test('Bridge invalid timeout falls back safely: '+value,async t=>{const b=await setup(t,{env:{CODEX_BRIDGE_TIMEOUT_MS:value}});assert.ok(b.h.timers.some(x=>x.ms===900000));});
 test('Bridge completion clears deadline and does not leave close timer after synchronous close',async t=>{const b=await setup(t);b.send('turn/completed',{threadId:'thread-test',turn:{id:'turn-test',status:'completed'}});assert.equal(b.h.timers.find(x=>x.ms===900000).cleared,true);assert.ok(!b.h.timers.some(x=>x.ms===1000&&!x.cleared));});
 test('Bridge delayed close clears termination timer',async t=>{const b=await setup(t);b.ws.close=()=>{};b.send('turn/completed',{threadId:'thread-test',turn:{id:'turn-test',status:'completed'}});const timer=b.h.timers.find(x=>x.ms===1000);assert.ok(timer);b.ws.emit('close');assert.equal(timer.cleared,true);});
+
+test('Bridge sends human task header to TTS stdin while preserving JSON answer',async t=>{
+ const b=await setup(t,{env:{CODEX_BRIDGE_TASK_NUMBER:'9',CODEX_BRIDGE_TASK_TITLE:'Revisar saída'}});
+ b.send('item/completed',{threadId:'thread-test',turnId:'turn-test',item:{type:'agentMessage',text:'Resposta existente.'}});
+ b.send('turn/completed',{threadId:'thread-test',turn:{id:'turn-test',status:'completed'}});
+ const call=b.h.calls.find(c=>c.command==='termux-tts-speak');
+ assert.equal(call.child.input,'Tarefa 9 — Revisar saída foi finalizada com sucesso.\n\nResposta existente.');
+ assert.equal(JSON.parse(b.h.logs[0]).answer,'Resposta existente.');
+ assert.deepEqual(Array.from(b.requests.find(r=>r.method==='thread/start').params.config.notify),[]);
+ call.child.emit('close',0);assert.ok(b.h.timers.find(t=>t.ms===120000).cleared);
+});
+test('Bridge speaks failure once and resumes with scoped notify override',async t=>{
+ const b=await setup(t,{saved:true,env:{CODEX_BRIDGE_TASK_NUMBER:'4',CODEX_BRIDGE_TASK_TITLE:'Consultar'}});
+ assert.deepEqual(Array.from(b.requests.find(r=>r.method==='thread/resume').params.config.notify),[]);
+ b.send('turn/completed',{threadId:'thread-test',turn:{id:'turn-test',status:'failed',error:{message:'network'}}});
+ b.ws.emit('close');
+ const calls=b.h.calls.filter(c=>c.command==='termux-tts-speak');assert.equal(calls.length,1);
+ assert.ok(calls[0].child.input.startsWith('Tarefa 4 — Consultar foi finalizada com falha.'));
+});
+test('Bridge legacy TTS has readable fallback and no UUID announcement',async t=>{
+ const b=await setup(t);b.send('turn/completed',{threadId:'thread-test',turn:{id:'turn-test',status:'completed'}});
+ assert.ok(b.h.calls.find(c=>c.command==='termux-tts-speak').child.input.startsWith('Tarefa legada — Tarefa sem título foi finalizada com sucesso.'));
+});
+test('Explicit TTS opt-out preserves global notification configuration',async t=>{
+ const b=await setup(t,{env:{CODEX_BRIDGE_TTS:'0'}});assert.equal(b.requests.find(r=>r.method==='thread/start').params.config,undefined);
+ b.send('turn/completed',{threadId:'thread-test',turn:{id:'turn-test',status:'completed'}});
+ assert.ok(!b.h.calls.some(c=>c.command==='termux-tts-speak'));
+});

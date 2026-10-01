@@ -3,9 +3,17 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const {spawn} = require('child_process');
+const {createSpeaker} = require('./task-tts');
+const speak = createSpeaker({spawn,setTimeout,clearTimeout,env:process.env});
 const DIR = path.join(process.env.HOME, 'codex-bridge');
 const THREAD_FILE = process.env.CODEX_BRIDGE_THREAD_FILE || path.join(DIR, 'thread-id');
 const JSON_MODE = process.env.CODEX_BRIDGE_JSON === '1';
+const TTS_ENABLED = process.env.CODEX_BRIDGE_TTS !== '0' && (JSON_MODE || process.env.CODEX_BRIDGE_TTS === '1');
+const SPEECH_TASK = {transport:process.env.CODEX_BRIDGE_TASK_TRANSPORT||'supabase',
+  task_number:process.env.CODEX_BRIDGE_TASK_NUMBER,number:process.env.CODEX_BRIDGE_TASK_NUMBER,
+  title:process.env.CODEX_BRIDGE_TASK_TITLE};
+// Override only this bridge conversation; preserve the global notify hook.
+const SPEECH_CONFIG = TTS_ENABLED ? {config:{notify:[]}} : {};
 // Invalid, zero or overflowing values use a safe default (Node timers are int32).
 const DEFAULT_TIMEOUT_MS = 900000;
 const timeoutSetting = process.env.CODEX_BRIDGE_TIMEOUT_MS || '';
@@ -24,7 +32,11 @@ if (process.env.CODEX_BRIDGE_LOCKED !== THREAD_FILE) {
   child.on('error', e => { console.error(e.message); process.exit(1); });
   child.on('exit', (code) => process.exit(code ?? 1));
 } else {
-  main().catch(e => { console.error(e.message); process.exit(1); });
+  main().catch(async e => {
+    console.error(e.message);
+    if (TTS_ENABLED) await speak(SPEECH_TASK,{status:'failed',error:e.message});
+    process.exitCode=1;
+  });
 }
 function ready() {
   return new Promise(resolve => {
@@ -53,6 +65,7 @@ async function main() {
     if (JSON_MODE) console.log(JSON.stringify({threadId,turnId,status:error?'failed':'completed',answer,error:error||null}));
     else if (error) console.error(error);
     else console.log('\n--- CODEX ---\n'+(answer||'(sem resposta textual)')+'\n-------------\nThread: '+threadId);
+    if (TTS_ENABLED) void speak(SPEECH_TASK,{status:error?'failed':'completed',answer,error});
     process.exitCode=error?1:0;
     ws.close();
     if (!socketClosed) closeTimer=setTimeout(()=>{closeTimer=undefined;ws.terminate();},1000).unref();
@@ -86,11 +99,11 @@ async function main() {
       await rpc('initialize',{clientInfo:{name:'termux-persistent-bridge',version:'2.1.0'},capabilities:{experimentalApi:true}});
       ws.send(JSON.stringify({jsonrpc:'2.0',method:'initialized',params:{}}));
       const saved=fs.existsSync(THREAD_FILE)?fs.readFileSync(THREAD_FILE,'utf8').trim():'';
-      const result=await rpc(saved?'thread/resume':'thread/start',saved?{threadId:saved}:{});
+      const result=await rpc(saved?'thread/resume':'thread/start',{...(saved?{threadId:saved}:{}),approvalPolicy:'never',sandbox:'workspace-write',...SPEECH_CONFIG});
       threadId=result?.thread?.id;
       if(!threadId) throw Error('Resposta sem threadId; ponteiro preservado.');
       if(saved!==threadId) {fs.writeFileSync(THREAD_FILE+'.tmp',threadId+'\n',{mode:0o600}); fs.renameSync(THREAD_FILE+'.tmp',THREAD_FILE);}
-      const turn=await rpc('turn/start',{threadId,input:[{type:'text',text:prompt}]});
+      const turn=await rpc('turn/start',{threadId,approvalPolicy:'never',sandboxPolicy:{type:'workspaceWrite',writableRoots:["/data/data/com.termux/files/home/.config/codex-bridge","/data/data/com.termux/files/home/.bashrc"]},input:[{type:'text',text:prompt}]});
       turnId=turn.turn.id;
     } catch(e) {finish(e.message);}
   });

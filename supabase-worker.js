@@ -1,5 +1,6 @@
 'use strict';
 const fs=require('fs'),path=require('path'),{spawn}=require('child_process');
+const {displayTask,taskSummary}=require('./task-display');
 const DIR=__dirname, STATE=path.join(DIR,'supabase-state');
 const config=JSON.parse(fs.readFileSync(path.join(DIR,'remote-config.json')));
 const sb=config.supabase||{};
@@ -15,7 +16,7 @@ async function request(route,options={}){
   return text?JSON.parse(text):null;
 }
 async function next(){
-  const rows=await request('bridge_tasks?status=eq.queued&select=id,instruction,created_at&order=created_at.asc&limit=1');
+  const rows=await request('bridge_tasks?status=eq.queued&select=*&order=created_at.asc&limit=1');
   return rows?.[0]||null;
 }
 async function claim(task){
@@ -24,10 +25,10 @@ async function claim(task){
   });
   return rows?.[0]||null;
 }
-function execute(prompt){
+function execute(prompt,task={}){
   return new Promise(resolve=>{
     const child=spawn(path.join(process.env.PREFIX||'/data/data/com.termux/files/usr','bin/codex-bridge'),[prompt],{
-      shell:false,stdio:['ignore','pipe','pipe'],env:{...process.env,CODEX_BRIDGE_JSON:'1',CODEX_BRIDGE_THREAD_FILE:path.join(DIR,'supabase-thread-id')}
+      shell:false,stdio:['ignore','pipe','pipe'],env:{...process.env,CODEX_BRIDGE_JSON:'1',CODEX_BRIDGE_TASK_TRANSPORT:'supabase',CODEX_BRIDGE_TASK_NUMBER:displayTask(task).number||'',CODEX_BRIDGE_TASK_TITLE:displayTask(task).title,CODEX_BRIDGE_THREAD_FILE:path.join(DIR,'supabase-thread-id')}
     });
     let stdout='',stderr='';
     child.stdout.on('data',d=>stdout+=d); child.stderr.on('data',d=>stderr+=d);
@@ -45,7 +46,8 @@ async function finish(task,run){
       status:ok?'succeeded':'failed',result,error,completed_at:new Date().toISOString(),updated_at:new Date().toISOString()
     })
   });
-  log('execution_finish',{id:task.id,status:ok?'succeeded':'failed'});
+  log('execution_finish',{id:task.id,taskNumber:displayTask(task).number,status:ok?'succeeded':'failed'});
+  return {...taskSummary({...task,status:ok?'succeeded':'failed'}),result,error};
 }
 let stopping=false,wake;
 for(const sig of ['SIGTERM','SIGINT'])process.on(sig,()=>{stopping=true;if(wake)wake();});
@@ -57,7 +59,7 @@ async function main(){
       const task=await next();
       if(task){
         const claimed=await claim(task);
-        if(claimed){log('execution_start',{id:task.id});await finish(task,await execute(task.instruction));continue;}
+        if(claimed){log('execution_start',{id:task.id});await finish(claimed,await execute(claimed.instruction,claimed));continue;}
       }
     }catch(e){log('poll_error',{error:e.message});}
     await new Promise(resolve=>{const t=setTimeout(resolve,pollSeconds*1000);wake=()=>{clearTimeout(t);resolve();};});

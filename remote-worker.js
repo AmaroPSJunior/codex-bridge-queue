@@ -1,6 +1,7 @@
 'use strict';
 const fs=require('fs'), path=require('path'), crypto=require('crypto');
 const {spawn}=require('child_process');
+const {shortTitle,markdownLabel,taskSummary}=require('./task-display');
 const DIR=__dirname, STATE=path.join(DIR,'remote-state');
 const config=JSON.parse(fs.readFileSync(path.join(DIR,'remote-config.json')));
 const repo=config.repository, base='repos/'+repo;
@@ -62,7 +63,7 @@ function parseTask(body) {
   return v;
 }
 async function execute(s) {
-  await commentOnce(s,'<!-- codex-bridge:claim:'+s.taskId+' -->','Tarefa recebida. ID: `'+s.taskId+'`. Execução única neste Termux.');
+  await commentOnce(s,'<!-- codex-bridge:claim:'+s.taskId+' -->',markdownLabel(s,'github')+'. Recebida. ID técnico: `'+s.taskId+'`. Execução única neste Termux.');
   await setStatus(s,'running');
   // Write-ahead execution fence. Recovery never reruns a task past this point.
   s.status='executing'; s.executions=1; s.startedAt=new Date().toISOString(); save(s);
@@ -71,7 +72,7 @@ async function execute(s) {
   const out=fs.openSync(stdoutFile,'w',0o600), err=fs.openSync(stderrFile,'w',0o600);
   const result=await new Promise(resolve=>{
     const child=spawn(path.join(process.env.PREFIX||'/data/data/com.termux/files/usr','bin/codex-bridge'),[s.prompt],{
-      shell:false,stdio:['ignore',out,err],env:{...process.env,CODEX_BRIDGE_JSON:'1',CODEX_BRIDGE_THREAD_FILE:path.join(DIR,'remote-thread-id')}
+      shell:false,stdio:['ignore',out,err],env:{...process.env,CODEX_BRIDGE_JSON:'1',CODEX_BRIDGE_TASK_TRANSPORT:'github',CODEX_BRIDGE_TASK_NUMBER:String(s.issue),CODEX_BRIDGE_TASK_TITLE:shortTitle(s.title),CODEX_BRIDGE_THREAD_FILE:path.join(DIR,'remote-thread-id')}
     });
     fs.closeSync(out);fs.closeSync(err);
     s.childPid=child.pid; save(s);
@@ -94,7 +95,7 @@ async function publish(s) {
   if(!chunks.length)chunks.push('(sem resposta)');
   for(let i=0;i<chunks.length;i++) {
     await commentOnce(s,'<!-- codex-bridge:result:'+s.taskId+':'+(i+1)+'/'+chunks.length+' -->',
-      '**'+s.outcome.toUpperCase()+'** · task_id: `'+s.taskId+'` · parte '+(i+1)+'/'+chunks.length+'\n\n'+chunks[i]);
+      markdownLabel(s,'github')+' — '+taskSummary({...s,status:s.outcome},'github').status_label+' · parte '+(i+1)+'/'+chunks.length+'\n\n'+chunks[i]);
   }
   await setStatus(s,s.outcome,s.outcome==='done'||s.outcome==='duplicate'||s.outcome==='rejected');
   s.status=s.outcome; s.publishedAt=new Date().toISOString();save(s);
@@ -114,7 +115,7 @@ async function accept(issue) {
   try {task=parseTask(issue.body);} catch(e) {
     const s={issue:issue.number,taskId:'invalid-'+issue.number,status:'publishing',outcome:'rejected',executions:0,result:e.message};save(s);await publish(s);return;
   }
-  const s={issue:issue.number,githubId:issue.id,taskId:task.task_id,prompt:task.prompt,promptSha256:crypto.createHash('sha256').update(task.prompt).digest('hex'),status:'claimed',executions:0};
+  const s={issue:issue.number,title:shortTitle(task.title,shortTitle(issue.title)),githubId:issue.id,taskId:task.task_id,prompt:task.prompt,promptSha256:crypto.createHash('sha256').update(task.prompt).digest('hex'),status:'claimed',executions:0};
   const previous=records().find(r=>r.taskId===s.taskId);
   if(previous) {
     Object.assign(s,{status:'publishing',outcome:'duplicate',result:'task_id já registrado na issue #'+previous.issue+'. Consulte a issue original. O prompt não foi executado novamente.'});

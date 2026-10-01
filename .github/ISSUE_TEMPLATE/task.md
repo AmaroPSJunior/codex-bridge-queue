@@ -7,5 +7,6 @@ labels: codex:queued
 {
   "protocol": "codex-bridge/v1",
   "task_id": "SUBSTITUA-POR-UUID-UNICO",
+  "title": "Título curto da tarefa",
   "prompt": "Escreva aqui sua instrução"
 }

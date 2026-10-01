@@ -1,7 +1,7 @@
 """Isolated integration checks; no real network or Codex invocation."""
 import json, os, pathlib, shutil, subprocess, tempfile, time
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-SHEBANG = '#!' + shutil.which('python') + '\n'
+SHEBANG = '#!' + shutil.which('python3') + '\n'
 
 def wait_for(check, timeout=12):
     end=time.monotonic()+timeout
@@ -15,7 +15,7 @@ def wait_for(check, timeout=12):
 
 with tempfile.TemporaryDirectory(prefix='bridge-queue-test-') as temp:
     root=pathlib.Path(temp); bridge=root/'bridge'; bridge.mkdir()
-    for name in ('remote','remote-worker.js'): shutil.copy(ROOT/name,bridge/name)
+    for name in ('remote','remote-worker.js','task-display.js'): shutil.copy(ROOT/name,bridge/name)
     (bridge/'logs').mkdir(); (root/'bin').mkdir()
     (bridge/'remote-config.json').write_text(json.dumps({'repository':'owner/queue','allowedAuthors':['owner'],'pollSeconds':.1,'maxPromptBytes':24000}))
     db=root/'db.json'
@@ -52,7 +52,7 @@ if os.path.exists(os.environ['MOCK_SLOW']):time.sleep(30)
 print(json.dumps({'status':'completed','answer':'PONTE REMOTA FUNCIONANDO','threadId':'mock-thread','turnId':'mock-turn'}))
 ''');(root/'bin/codex-bridge').chmod(0o700)
     env={**os.environ,'PATH':str(root/'bin')+':'+os.environ['PATH'],'PREFIX':str(root),'MOCK_DB':str(db),'MOCK_CALLS':str(root/'calls'),'MOCK_SLOW':str(root/'slow')}
-    def ctl(action):return subprocess.run([str(bridge/'remote'),action],env=env,capture_output=True,text=True,check=True)
+    def ctl(action):return subprocess.run([shutil.which('node'),str(bridge/'remote'),action],env=env,capture_output=True,text=True,check=True)
     def state(n):return json.loads((bridge/'remote-state'/f'{n}.json').read_text())
     try:
         ctl('start');wait_for(lambda:state(1)['status']=='done')

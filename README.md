@@ -106,3 +106,7 @@ Validação local em 30/09/2026: duas execuções sequenciais do script instalad
 ## Timeout da ponte
 
 `CODEX_BRIDGE_TIMEOUT_MS` configura o limite em milissegundos. O padrão é 900000 (15 minutos); valores inválidos voltam ao padrão. Ao vencer o prazo, consulte o estado: o turno pode continuar no app-server. Timers são limpos ao concluir/desconectar. Testes offline: `npm test`.
+
+## Identificação e fala
+
+As tarefas usam número e título legíveis e estados apresentados em português, mantendo UUID e estados internos. O TTS anuncia a identidade antes do resultado; tarefas antigas têm fallback sem UUID. Consulte [identidade](docs/TASK-IDENTITY.md) e aplique a migração somente após revisão.

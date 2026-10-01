@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node --test tests/*.test.cjs"
+    "test": "node --test tests/*.test.cjs",
+    "tasks": "node scripts/tasks.cjs"
   },
   "keywords": [],
   "author": "",
