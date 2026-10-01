@@ -58,6 +58,12 @@ async function main() {
   const ws = new WebSocket(WS_URL);
   let nextId=1, threadId, turnId, answer='', finished=false, socketClosed=false, closeTimer;
   const pending = new Map();
+  const commandOffsets=new Map();
+  const progressEvent=event=>{
+    if(process.stderr.write(JSON.stringify({bridge_progress:1,...event})+'\n')===false){
+      ws.pause?.();process.stderr.once('drain',()=>ws.resume?.());
+    }
+  };
   const timeout = setTimeout(()=>finish('Timeout após '+TIMEOUT_MS+' ms; o turno pode continuar no app-server. Não reenviar automaticamente. Consulte o estado antes de tentar novamente.'),TIMEOUT_MS);
   function finish(error) {
     if (finished) return;
@@ -87,6 +93,22 @@ async function main() {
     }
     const p=msg.params;
     if (!p || p.threadId!==threadId || !turnId) return;
+    // Opt-in stderr only: preserve stdout JSON and suppress unrelated turns.
+    if (!finished && process.env.CODEX_BRIDGE_PROGRESS==='1' && p.turnId===turnId) {
+      if(msg.method==='item/commandExecution/outputDelta' && typeof p.delta==='string') {
+        const id=String(p.itemId||'command');
+        commandOffsets.set(id,(commandOffsets.get(id)||0)+p.delta.length);
+        progressEvent({type:'data',id,text:p.delta});
+      }
+      if(msg.method==='item/completed' && p.item?.type==='commandExecution') {
+        const id=String(p.item.id||'command'),offset=commandOffsets.get(id)||0;
+        const output=typeof p.item.aggregatedOutput==='string'?p.item.aggregatedOutput:'';
+        if(output.length>offset)progressEvent({type:'data',id,text:output.slice(offset)});
+        progressEvent({type:'end',id,code:Number.isInteger(p.item.exitCode)?p.item.exitCode:null});
+        commandOffsets.delete(id);
+      }
+      if(msg.method==='item/completed' && p.item?.type==='agentMessage') console.error('Codex está preparando a resposta.');
+    }
     if (msg.method==='item/completed' && p.turnId===turnId && p.item?.type==='agentMessage') answer=p.item.text||answer;
     if (msg.method==='turn/completed' && p.turn?.id===turnId) {
       finish(p.turn.status==='completed'?null:JSON.stringify(p.turn.error||{status:p.turn.status}));

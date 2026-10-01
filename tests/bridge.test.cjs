@@ -62,3 +62,37 @@ test('Explicit TTS opt-out preserves global notification configuration',async t=
  b.send('turn/completed',{threadId:'thread-test',turn:{id:'turn-test',status:'completed'}});
  assert.ok(!b.h.calls.some(c=>c.command==='termux-tts-speak'));
 });
+
+
+test('Bridge opt-in terminal deltas use stderr and ignore unrelated turns without changing JSON',async t=>{
+ const b=await setup(t,{env:{CODEX_BRIDGE_PROGRESS:'1'}});const output=[];b.h.proc.stderr={write:s=>output.push(s)};
+ b.send('item/commandExecution/outputDelta',{threadId:'other',turnId:'turn-test',delta:'wrong'});
+ b.send('item/commandExecution/outputDelta',{threadId:'thread-test',turnId:'other',delta:'wrong'});
+ b.send('item/commandExecution/outputDelta',{threadId:'thread-test',turnId:'turn-test',delta:'terminal\n'});
+ b.send('turn/completed',{threadId:'thread-test',turn:{id:'turn-test',status:'completed'}});
+ b.send('item/commandExecution/outputDelta',{threadId:'thread-test',turnId:'turn-test',delta:'late'});
+ assert.equal(output.length,1);assert.deepEqual(JSON.parse(output[0]),{bridge_progress:1,type:'data',id:'command',text:'terminal\n'});assert.equal(JSON.parse(b.h.logs[0]).status,'completed');
+});
+
+
+test('Bridge command completion captures aggregate tail and exit after streamed output',async t=>{
+ const b=await setup(t,{env:{CODEX_BRIDGE_PROGRESS:'1'}});const frames=[];b.h.proc.stderr={write:s=>frames.push(JSON.parse(s))};
+ b.send('item/started',{threadId:'thread-test',turnId:'turn-test',item:{type:'commandExecution',id:'cmd'}});
+ assert.equal(b.h.logs.length,0);
+ b.send('item/commandExecution/outputDelta',{threadId:'thread-test',turnId:'turn-test',itemId:'cmd',delta:'first\n'});
+ b.send('item/completed',{threadId:'thread-test',turnId:'turn-test',item:{type:'commandExecution',id:'cmd',exitCode:7,aggregatedOutput:'first\nlast'}});
+ assert.deepEqual(frames.map(f=>[f.type,f.text??f.code]),[['data','first\n'],['data','last'],['end',7]]);
+});
+test('Bridge silent command completion emits only control, not an output line',async t=>{
+ const b=await setup(t,{env:{CODEX_BRIDGE_PROGRESS:'1'}});const frames=[];b.h.proc.stderr={write:s=>frames.push(JSON.parse(s))};
+ b.send('item/completed',{threadId:'thread-test',turnId:'turn-test',item:{type:'commandExecution',id:'empty',exitCode:0,aggregatedOutput:''}});
+ assert.deepEqual(frames,[{bridge_progress:1,type:'end',id:'empty',code:0}]);assert.equal(b.h.logs.length,0);
+});
+
+
+test('Bridge applies backpressure to progress stream without changing task execution commands',async t=>{
+ const b=await setup(t,{env:{CODEX_BRIDGE_PROGRESS:'1'}});let paused=0,resumed=0,drain;
+ b.ws.pause=()=>paused++;b.ws.resume=()=>resumed++;b.h.proc.stderr={write:()=>false,once:(name,fn)=>{assert.equal(name,'drain');drain=fn;}};
+ b.send('item/commandExecution/outputDelta',{threadId:'thread-test',turnId:'turn-test',itemId:'cmd',delta:'output\n'});
+ assert.equal(paused,1);drain();assert.equal(resumed,1);
+});

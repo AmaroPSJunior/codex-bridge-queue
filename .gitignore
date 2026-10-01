@@ -39,3 +39,9 @@
 !autostart/supabase-launcher.py
 !tests/test_supabase_autostart.py
 !tests/test_boot.py
+!task-progress.js
+!database/task-progress.sql
+!tests/progress.test.cjs
+!tests/transports.test.cjs
+!tests/test_postgres.py
+!docs/PROGRESS.md
