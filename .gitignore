@@ -34,3 +34,8 @@
 !tests/tts.test.cjs
 !tests/test_remote.py
 !supabase-worker.js
+!autostart/SUPABASE.md
+!autostart/install-supabase-autostart.py
+!autostart/supabase-launcher.py
+!tests/test_supabase_autostart.py
+!tests/test_boot.py
