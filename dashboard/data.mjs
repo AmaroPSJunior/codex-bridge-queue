@@ -13,7 +13,7 @@ export async function createData(config,{onEvent,onState,onRefresh,onAuthLost,lo
  return {
   async login(email,password){const {error}=await client.auth.signInWithPassword({email,password});if(error)throw Error('Login não autorizado. Confira sua conta.');try{await rpc('bridge_dashboard_list',{p_limit:1});}catch(e){await client.auth.signOut();throw e;}},
   list:args=>rpc('bridge_dashboard_list',args), summary:id=>rpc('bridge_dashboard_summary',{p_id:id}), detail:id=>rpc('bridge_dashboard_detail',{p_id:id}),stats:()=>rpc('bridge_dashboard_stats'),
-  async subscribe(){await abort();closed=false;const attempt=generation;gate=new Connection({refresh:onRefresh,onState});gate.set('connecting');try{await client.realtime.setAuth();}catch{if(attempt===generation)gate.set('offline');return;}if(closed||attempt!==generation)return;
+  async subscribe(){await abort();closed=false;const attempt=generation;gate=new Connection({refresh:onRefresh,onState});gate.set('connecting');try{const {data:{session}}=await client.auth.getSession();if(!session?.access_token)throw Error('Sessão ausente');await client.realtime.setAuth(session.access_token);}catch{if(attempt===generation)gate.set('offline');return;}if(closed||attempt!==generation)return;
    channel=client.channel('bridge-dashboard',{config:{private:true}}).on('broadcast',{event:'task_changed'},({payload})=>{if(!closed&&attempt===generation)onEvent?.(payload);}).subscribe(status=>{if(!closed&&attempt===generation)gate.set(status==='SUBSCRIBED'?'live':status==='CLOSED'?'offline':'reconnecting');});
   },
   async close(){closed=true;await abort();auth.data.subscription.unsubscribe();await client.auth.signOut();}
