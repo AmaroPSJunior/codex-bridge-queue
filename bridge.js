@@ -22,6 +22,20 @@ const TIMEOUT_MS = /^\d+$/.test(timeoutSetting) && Number.isSafeInteger(timeoutN
   ? timeoutNumber : DEFAULT_TIMEOUT_MS;
 const prompt = process.argv.slice(2).join(' ').trim();
 const WS_URL = 'ws://127.0.0.1:8765';
+// Operator-selected profile, resolved and enforced by app-server. No automatic grant.
+// Named profiles and legacy sandbox fields are mutually exclusive in protocol 0.156.1.
+const PERMISSIONS_PROFILE = process.env.CODEX_BRIDGE_PERMISSIONS_PROFILE || '';
+function permissionParams(turn=false) {
+  if (PERMISSIONS_PROFILE) {
+    if (!/^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(PERMISSIONS_PROFILE))
+      throw Error('CODEX_BRIDGE_PERMISSIONS_PROFILE deve ser um nome de perfil definido pelo operador.');
+    return {approvalPolicy:'never',permissions:PERMISSIONS_PROFILE};
+  }
+  return turn
+    ? {approvalPolicy:'never',sandboxPolicy:{type:'workspaceWrite',writableRoots:["/data/data/com.termux/files/home/.config/codex-bridge","/data/data/com.termux/files/home/.bashrc"]}}
+    : {approvalPolicy:'never',sandbox:'workspace-write'};
+}
+
 if (!prompt) { console.error('Uso: codex-bridge "sua instrução"'); process.exit(1); }
 fs.mkdirSync(path.join(DIR, 'logs'), {recursive:true});
 // flock serializes callers of the same thread, including the existing local worker.
@@ -121,11 +135,11 @@ async function main() {
       await rpc('initialize',{clientInfo:{name:'termux-persistent-bridge',version:'2.1.0'},capabilities:{experimentalApi:true}});
       ws.send(JSON.stringify({jsonrpc:'2.0',method:'initialized',params:{}}));
       const saved=fs.existsSync(THREAD_FILE)?fs.readFileSync(THREAD_FILE,'utf8').trim():'';
-      const result=await rpc(saved?'thread/resume':'thread/start',{...(saved?{threadId:saved}:{}),approvalPolicy:'never',sandbox:'workspace-write',...SPEECH_CONFIG});
+      const result=await rpc(saved?'thread/resume':'thread/start',{...(saved?{threadId:saved}:{}),...permissionParams(),...SPEECH_CONFIG});
       threadId=result?.thread?.id;
       if(!threadId) throw Error('Resposta sem threadId; ponteiro preservado.');
       if(saved!==threadId) {fs.writeFileSync(THREAD_FILE+'.tmp',threadId+'\n',{mode:0o600}); fs.renameSync(THREAD_FILE+'.tmp',THREAD_FILE);}
-      const turn=await rpc('turn/start',{threadId,approvalPolicy:'never',sandboxPolicy:{type:'workspaceWrite',writableRoots:["/data/data/com.termux/files/home/.config/codex-bridge","/data/data/com.termux/files/home/.bashrc"]},input:[{type:'text',text:prompt}]});
+      const turn=await rpc('turn/start',{threadId,...permissionParams(true),input:[{type:'text',text:prompt}]});
       turnId=turn.turn.id;
     } catch(e) {finish(e.message);}
   });

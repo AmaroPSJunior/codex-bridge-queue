@@ -96,3 +96,26 @@ test('Bridge applies backpressure to progress stream without changing task execu
  b.send('item/commandExecution/outputDelta',{threadId:'thread-test',turnId:'turn-test',itemId:'cmd',delta:'output\n'});
  assert.equal(paused,1);drain();assert.equal(resumed,1);
 });
+
+for(const saved of [false,true])test('Operator profile selected exclusively for thread and turn '+saved,async t=>{
+ const b=await setup(t,{saved,env:{CODEX_BRIDGE_PERMISSIONS_PROFILE:'bridge-git'}});
+ for(const request of b.requests.filter(r=>['thread/start','thread/resume','turn/start'].includes(r.method))){
+  assert.equal(request.params.permissions,'bridge-git');assert.equal(request.params.approvalPolicy,'never');
+  assert.equal(request.params.sandbox,undefined);assert.equal(request.params.sandboxPolicy,undefined);
+ }
+ assert.ok(b.requests.some(r=>r.method==='turn/start'));
+});
+test('Default retains existing workspace sandbox and private config roots',async t=>{
+ const b=await setup(t);const thread=b.requests.find(r=>r.method==='thread/start').params,turn=b.requests.find(r=>r.method==='turn/start').params;
+ assert.equal(thread.sandbox,'workspace-write');assert.equal(turn.sandboxPolicy.type,'workspaceWrite');assert.equal(turn.permissions,undefined);
+ assert.equal(turn.sandboxPolicy.writableRoots.length,2);assert.ok(!turn.sandboxPolicy.writableRoots.some(p=>p.endsWith('/.git')));
+});
+test('Rejected profile fails closed without default fallback or turn',async t=>{
+ const b=await setup(t,{saved:true,profileError:true,env:{CODEX_BRIDGE_PERMISSIONS_PROFILE:'bridge-git'}});
+ assert.ok(!b.requests.some(r=>r.method==='turn/start'));assert.equal(b.requests.filter(r=>r.method==='thread/resume').length,1);assert.equal(b.store.get('/fake/thread'),'thread-test\n');
+});
+test('Built-in unrestricted profile cannot be selected through bridge option',async t=>{
+ const b=await setup(t,{env:{CODEX_BRIDGE_PERMISSIONS_PROFILE:':danger-full-access'}});
+ assert.ok(!b.requests.some(r=>r.method==='thread/start'));assert.equal(JSON.parse(b.h.logs[0]).status,'failed');
+});
+

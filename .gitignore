@@ -71,3 +71,7 @@ dashboard/dist/
 !database/dashboard-read.sql
 !database/dashboard-realtime.sql
 !scripts/dashboard-build.cjs
+
+# Git permissions support — C7
+!docs/GIT-PERMISSIONS.md
+!scripts/git-diagnostic.py
