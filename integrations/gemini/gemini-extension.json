@@ -1,0 +1,37 @@
+{
+  "name": "codex-bridge-queue-client",
+  "version": "1.0.0",
+  "description": "Gemini cria e consulta tarefas; Codex continua sendo o executor.",
+  "mcpServers": {
+    "bridge-queue": {
+      "command": "node",
+      "args": [
+        "${extensionPath}/entry.cjs"
+      ],
+      "timeout": 60000,
+      "includeTools": [
+        "bridge_create_task",
+        "bridge_get_task",
+        "bridge_list_tasks"
+      ]
+    }
+  },
+  "settings": [
+    {
+      "name": "Pasta local do codex-bridge",
+      "description": "Caminho absoluto do projeto no Termux. Somente caminho, nunca uma chave. Padrão sem configuração: ~/codex-bridge.",
+      "envVar": "CODEX_BRIDGE_ROOT"
+    }
+  ],
+  "contextFileName": "GEMINI.md",
+  "excludeTools": [
+    "run_shell_command",
+    "read_file",
+    "read_many_files",
+    "list_directory",
+    "glob",
+    "search_file_content",
+    "write_file",
+    "replace"
+  ]
+}

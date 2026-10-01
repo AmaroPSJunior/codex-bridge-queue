@@ -6,7 +6,9 @@
   "scripts": {
     "test": "node --test tests/*.test.cjs",
     "tasks": "node scripts/tasks.cjs",
-    "test:postgres": "python3 -B tests/test_postgres.py --disposable-local-database"
+    "test:postgres": "python3 -B tests/test_postgres.py --disposable-local-database",
+    "gemini:check": "node integrations/gemini/setup.cjs",
+    "gemini:run": "python3 integrations/gemini/run-gemini.py"
   },
   "keywords": [],
   "author": "",
