@@ -101,3 +101,8 @@ Para reinstalar o script após recuperar o projeto, crie `~/.termux/boot`, prese
 Backup anterior à configuração: `~/codex-bridge-backup-20260930-201332-before-autostart.tar.gz`, contendo a ponte e `.termux` anteriores, com permissão 600, fora do Git.
 
 Validação local em 30/09/2026: duas execuções sequenciais do script instalado e uma chamada concorrente passaram. A concorrente saiu pelo lock; as sequenciais encontraram o worker existente. Confirmados exatamente um processo worker, PID 13027 preservado, hashes de `thread-id`, `remote-thread-id` e `remote-config.json` inalterados, heartbeat ativo e registro em `logs/autostart.log`. `npm test` e verificação de sintaxe shell passaram. Não foi reiniciado o celular nem interrompido o worker de produção.
+
+
+## Timeout da ponte
+
+`CODEX_BRIDGE_TIMEOUT_MS` configura o limite em milissegundos. O padrão é 900000 (15 minutos); valores inválidos voltam ao padrão. Ao vencer o prazo, consulte o estado: o turno pode continuar no app-server. Timers são limpos ao concluir/desconectar. Testes offline: `npm test`.

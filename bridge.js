@@ -6,6 +6,12 @@ const {spawn} = require('child_process');
 const DIR = path.join(process.env.HOME, 'codex-bridge');
 const THREAD_FILE = process.env.CODEX_BRIDGE_THREAD_FILE || path.join(DIR, 'thread-id');
 const JSON_MODE = process.env.CODEX_BRIDGE_JSON === '1';
+// Invalid, zero or overflowing values use a safe default (Node timers are int32).
+const DEFAULT_TIMEOUT_MS = 900000;
+const timeoutSetting = process.env.CODEX_BRIDGE_TIMEOUT_MS || '';
+const timeoutNumber = Number(timeoutSetting);
+const TIMEOUT_MS = /^\d+$/.test(timeoutSetting) && Number.isSafeInteger(timeoutNumber) && timeoutNumber > 0 && timeoutNumber <= 2147483647
+  ? timeoutNumber : DEFAULT_TIMEOUT_MS;
 const prompt = process.argv.slice(2).join(' ').trim();
 const WS_URL = 'ws://127.0.0.1:8765';
 if (!prompt) { console.error('Uso: codex-bridge "sua instrução"'); process.exit(1); }
@@ -38,9 +44,9 @@ async function main() {
     if (!await ready()) throw Error('O app-server não ficou pronto.');
   }
   const ws = new WebSocket(WS_URL);
-  let nextId=1, threadId, turnId, answer='', finished=false;
+  let nextId=1, threadId, turnId, answer='', finished=false, socketClosed=false, closeTimer;
   const pending = new Map();
-  const timeout = setTimeout(()=>finish('Timeout; o turno pode continuar no app-server. Não reenviar automaticamente.'),180000);
+  const timeout = setTimeout(()=>finish('Timeout após '+TIMEOUT_MS+' ms; o turno pode continuar no app-server. Não reenviar automaticamente. Consulte o estado antes de tentar novamente.'),TIMEOUT_MS);
   function finish(error) {
     if (finished) return;
     finished=true; clearTimeout(timeout);
@@ -49,7 +55,7 @@ async function main() {
     else console.log('\n--- CODEX ---\n'+(answer||'(sem resposta textual)')+'\n-------------\nThread: '+threadId);
     process.exitCode=error?1:0;
     ws.close();
-    setTimeout(()=>ws.terminate(),1000).unref();
+    if (!socketClosed) closeTimer=setTimeout(()=>{closeTimer=undefined;ws.terminate();},1000).unref();
   }
   function rpc(method,params={}) {
     return new Promise((resolve,reject)=>{const id=nextId++; pending.set(id,{resolve,reject}); ws.send(JSON.stringify({jsonrpc:'2.0',id,method,params}));});
@@ -74,7 +80,7 @@ async function main() {
     }
   });
   ws.on('error', e=>finish('Erro WebSocket: '+e.message));
-  ws.on('close',()=>{if(!finished) finish('WebSocket fechado antes da conclusão; resultado incerto.');});
+  ws.on('close',()=>{socketClosed=true;if(closeTimer){clearTimeout(closeTimer);closeTimer=undefined;}if(!finished) finish('WebSocket fechado antes da conclusão; resultado incerto.');});
   ws.on('open',async()=>{
     try {
       await rpc('initialize',{clientInfo:{name:'termux-persistent-bridge',version:'2.1.0'},capabilities:{experimentalApi:true}});
