@@ -31,11 +31,7 @@ def workers():
         except (FileNotFoundError, ProcessLookupError):
             continue
         except PermissionError:
-            try:
-                if proc.stat().st_uid == os.getuid():
-                    raise RuntimeError('Cannot inspect own processes')
-            except FileNotFoundError:
-                pass
+            continue
     return sorted(found)
 
 
