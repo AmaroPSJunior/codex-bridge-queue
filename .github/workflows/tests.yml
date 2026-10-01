@@ -1,0 +1,61 @@
+name: Bridge tests
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm test
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: bridge_test
+          POSTGRES_USER: bridge_test
+          POSTGRES_PASSWORD: local-ci-test-only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U bridge_test -d bridge_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -B tests/test_postgres.py --disposable-local-database
+        env:
+          PGHOST: 127.0.0.1
+          PGDATABASE: bridge_test
+          PGUSER: bridge_test
+          PGPASSWORD: local-ci-test-only
+      - run: python3 -B tests/test_dashboard_postgres.py --disposable-local-database
+        env:
+          PGHOST: 127.0.0.1
+          PGDATABASE: bridge_test
+          PGUSER: bridge_test
+          PGPASSWORD: local-ci-test-only
+  dashboard-browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm install --prefix /tmp/dashboard-browser playwright@1.58.2
+      - run: /tmp/dashboard-browser/node_modules/.bin/playwright install --with-deps chromium
+      - run: node tests/dashboard-browser.cjs
+        env:
+          NODE_PATH: /tmp/dashboard-browser/node_modules

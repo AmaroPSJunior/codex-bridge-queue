@@ -4,7 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node --test tests/*.test.cjs",
+    "test": "python3 -B scripts/test-offline.py",
+    "docs:generate": "python3 -B scripts/generate-docs.py",
+    "docs:check": "python3 -B scripts/generate-docs.py --check",
+    "smoke:github": "python3 scripts/smoke.py github",
+    "smoke:supabase": "python3 scripts/smoke.py supabase",
     "tasks": "node scripts/tasks.cjs",
     "test:postgres": "python3 -B tests/test_postgres.py --disposable-local-database",
     "gemini:check": "node integrations/gemini/setup.cjs",
