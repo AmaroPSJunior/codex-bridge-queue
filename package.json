@@ -8,7 +8,12 @@
     "tasks": "node scripts/tasks.cjs",
     "test:postgres": "python3 -B tests/test_postgres.py --disposable-local-database",
     "gemini:check": "node integrations/gemini/setup.cjs",
-    "gemini:run": "python3 integrations/gemini/run-gemini.py"
+    "gemini:run": "python3 integrations/gemini/run-gemini.py",
+    "dashboard:generate": "node scripts/dashboard-build.cjs --generate",
+    "dashboard:check": "node scripts/dashboard-build.cjs --check",
+    "dashboard:build": "node scripts/dashboard-build.cjs",
+    "dashboard:dev": "python3 -m http.server 4173 --bind 127.0.0.1 --directory dashboard",
+    "test:dashboard": "node --test tests/dashboard.test.cjs"
   },
   "keywords": [],
   "author": "",

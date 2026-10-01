@@ -62,3 +62,12 @@
 
 !docs/integrations/
 !docs/integrations/AI-QUEUE-ONBOARDING-PROMPT.md
+
+# Dashboard — C6
+!dashboard/
+!dashboard/**
+dashboard/dist/
+!docs/DASHBOARD.md
+!database/dashboard-read.sql
+!database/dashboard-realtime.sql
+!scripts/dashboard-build.cjs
