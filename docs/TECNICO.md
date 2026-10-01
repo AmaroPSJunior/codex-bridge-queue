@@ -12,6 +12,8 @@ Comece pelo [guia visual](GUIA.md). Este anexo descreve as garantias reais do c�
 | `worker.js` | Fila local legada `inbox`/`outbox`; independente dos transportes remotos |
 | `autostart/supabase-launcher.py` | Detecta processo existente; trava durante execução; destaca novo worker com logs filtrados |
 | `task-display.js` | Normaliza título e mostra `Tarefa N — Título`, sem usar UUID como nome humano |
+| `task-git.js` | Cria no máximo um commit local por tarefa validada; nunca faz push automático |
+| `task-git.js` | Cria no máximo um commit local por tarefa validada; nunca faz push automático |
 | `scripts/tasks.cjs` | Cliente explícito de criação e consulta dos dois transportes; nunca faz retry automático de criação |
 
 Threads locais, GitHub e Supabase usam arquivos distintos. A trava da thread evita chamadas simultâneas na mesma conversa, mas não transforma as ações do Codex em uma transação. Não altere arquivos de estado para forçar repetição.
@@ -225,3 +227,7 @@ Consulte [progresso ao vivo](PROGRESS.md) para batching, campos opcionais, sanit
 ## Identidade e apresentação
 
 Consulte [números, nomes e estados](TASK-IDENTITY.md): title persistido/task_name na API, summaries em português, backfill por created_at e sequência concorrente. UUID/status internos são preservados. Gemini já aceita instruction sem título e task_name como alias, além de reconhecer cancelled na leitura (sem operação de cancelamento).
+
+## Commit Git por tarefa
+
+O auto-commit do worker Supabase é opcional e desligado por padrão. Ative com `CODEX_BRIDGE_TASK_AUTOCOMMIT=1` ou `git.autoCommit=true` em `remote-config.json`. O fluxo é `execute -> validate -> commit -> completion metadata`. Só tarefas validadas tentam commit; não há commit vazio; repositório sujo no início não é auto-commitado; falha de commit preserva a saída da tarefa; nenhum `git push` é executado automaticamente. `database/task-git.sql` adiciona `git_status`, `commit_sha` e `git_files`. Estados possíveis: `disabled`, `not_attempted`, `dirty_start`, `no_changes`, `committed` e `failed`.

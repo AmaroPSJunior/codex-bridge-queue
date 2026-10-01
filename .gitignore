@@ -52,3 +52,5 @@ integrations/**/__pycache__/
 !dashboard/*.svg
 !dashboard/*.md
 dashboard/dist/
+
+!task-git.js

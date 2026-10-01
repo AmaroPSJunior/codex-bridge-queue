@@ -162,6 +162,10 @@
       "text": "Ao abrir uma sessão interativa do Bash no Termux, o launcher (programa iniciador) do Supabase verifica se já existe um worker (programa que busca pedidos). Se existir, preserva-o; caso contrário, inicia um em segundo plano. Para GitHub, use os comandos remote ou o script opcional do Termux:Boot. O celular precisa continuar ligado e permitir execução do Termux em segundo plano."
     },
     {
+      "title": "Como funciona o commit automático?",
+      "text": "O auto-commit Git do worker Supabase é opcional e desligado por padrão. Só ocorre após execução validada, não cria commit vazio, não captura um repositório que já estava sujo e nunca faz git push automaticamente. Pode registrar git_status, commit_sha e git_files."
+    },
+    {
       "title": "Quando algo demora ou falha",
       "text": "Primeiro confira rede, estado do worker e autenticação. Não envie novamente uma ação só porque a resposta demorou: o Codex pode continuar trabalhando. Um pedido uncertain no GitHub ou running parado no Supabase exige conferir o que ocorreu antes de decidir reenviar. O prazo da ponte com Codex é de 15 minutos por padrão, ajustável na configuração, mas esse prazo não desfaz ações já iniciadas."
     },

@@ -1,4 +1,4 @@
-<!-- Gerado por npm run docs:generate; não editar. Fonte: docs/model.json. SHA256: 088cc1cab1390db1c8fc928983f505acd76964f42848c7d14ee2f3244030d21b -->
+<!-- Gerado por npm run docs:generate; não editar. Fonte: docs/model.json. SHA256: 94f69962b4a68f8ba2a5cd2eb673eb7bf18cafaf9062fc6237ecfb8c2ae1c451 -->
 # Sua ponte entre ChatGPT e o Termux
 
 Uma explicação prática, sem precisar conhecer programação.
@@ -73,6 +73,12 @@ As credenciais são como a chave de uma caixa de correio: não devem ir nos pedi
 # Como usar no dia a dia?
 
 Ao abrir uma sessão interativa do Bash no Termux, o launcher (programa iniciador) do Supabase verifica se já existe um worker (programa que busca pedidos). Se existir, preserva-o; caso contrário, inicia um em segundo plano. Para GitHub, use os comandos remote ou o script opcional do Termux:Boot. O celular precisa continuar ligado e permitir execução do Termux em segundo plano.
+
+---
+
+# Como funciona o commit automático?
+
+O auto-commit Git do worker Supabase é opcional e desligado por padrão. Só ocorre após execução validada, não cria commit vazio, não captura um repositório que já estava sujo e nunca faz git push automaticamente. Pode registrar git_status, commit_sha e git_files.
 
 ---
 

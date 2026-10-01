@@ -2,9 +2,14 @@
 const fs=require('fs'),path=require('path'),{spawn}=require('child_process');
 const {displayTask,taskSummary}=require('./task-display');
 const {createProgress,localLog,sanitizer,commandStream}=require('./task-progress');
+const {inspectRepository,commitTaskChanges}=require('./task-git');
 const DIR=__dirname, STATE=path.join(DIR,'supabase-state');
 const config=JSON.parse(fs.readFileSync(path.join(DIR,'remote-config.json')));
 const sb=config.supabase||{};
+const gitConfig=config.git||{};
+const autoCommitEnabled=
+  process.env.CODEX_BRIDGE_TASK_AUTOCOMMIT==='1' ||
+  gitConfig.autoCommit===true;
 const url=(process.env.CODEX_SUPABASE_URL||sb.url||'').replace(/\/$/,'');
 const key=process.env.CODEX_SUPABASE_SERVICE_ROLE_KEY||'';
 const pollSeconds=Number(sb.pollSeconds||config.pollSeconds||15);
@@ -80,20 +85,79 @@ function execute(prompt,task={},progress){
     child.on('close',code=>{void done(code);});
   });
 }
-async function finish(task,run,progress){
+async function finish(task,run,progress,gitState={}){
   let parsed; try{parsed=JSON.parse(run.stdout.trim());}catch{}
-  const ok=run.code===0&&parsed?.status==='completed';
+  const executionOk=run.code===0&&parsed?.status==='completed';
   const result=parsed?.answer||run.stdout||'(sem resposta textual)';
   const rawError=parsed?.error||run.error||run.stderr||null;
-  const error=rawError&&String(rawError).split(/\r?\n/).map(sanitizer(process.env)).join('\n');
+  let error=rawError&&String(rawError).split(/\r?\n/).map(sanitizer(process.env)).join('\n');
+
+  let gitResult={
+    status:autoCommitEnabled?'not_attempted':'disabled',
+    commit_sha:null,
+    files:[]
+  };
+
+  if(executionOk&&autoCommitEnabled){
+    try{
+      if(gitState.error)throw new Error('Git inspection failed');
+      gitResult=await commitTaskChanges({
+        cwd:DIR,
+        task,
+        before:gitState.before,
+        enabled:true
+      });
+    }catch(e){
+      gitResult={status:'failed',commit_sha:null,files:[]};
+      error='Git commit failed: '+String(e.message||e);
+      log('task_git_failed',{id:task.id,error:e.message});
+    }
+  }
+
+  const ok=executionOk&&gitResult.status!=='failed';
+
   if(progress)await progress.close(ok?'succeeded':'failed');
+
+  const completion={
+    status:ok?'succeeded':'failed',
+    result,
+    error,
+    completed_at:new Date().toISOString(),
+    updated_at:new Date().toISOString()
+  };
+
+  const gitSchemaSupported=
+    ['git_status','commit_sha','git_files']
+      .every(k=>Object.prototype.hasOwnProperty.call(task,k));
+
+  if(gitSchemaSupported){
+    completion.git_status=gitResult.status;
+    completion.commit_sha=gitResult.commit_sha;
+    completion.git_files=gitResult.files||[];
+  }
+
   await request('bridge_tasks?id=eq.'+encodeURIComponent(task.id),{
-    method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({
-      status:ok?'succeeded':'failed',result,error,completed_at:new Date().toISOString(),updated_at:new Date().toISOString()
-    })
+    method:'PATCH',
+    headers:{Prefer:'return=minimal'},
+    body:JSON.stringify(completion)
   });
-  log('execution_finish',{id:task.id,taskNumber:displayTask(task).number,status:ok?'succeeded':'failed'});
-  return {...taskSummary({...task,status:ok?'succeeded':'failed'}),result,error};
+
+  log('execution_finish',{
+    id:task.id,
+    taskNumber:displayTask(task).number,
+    status:ok?'succeeded':'failed',
+    gitStatus:gitResult.status,
+    commitSha:gitResult.commit_sha
+  });
+
+  return {
+    ...taskSummary({...task,status:ok?'succeeded':'failed'}),
+    result,
+    error,
+    git_status:gitResult.status,
+    commit_sha:gitResult.commit_sha,
+    git_files:gitResult.files||[]
+  };
 }
 let stopping=false,wake;
 for(const sig of ['SIGTERM','SIGINT'])process.on(sig,()=>{stopping=true;if(activeProgress)void activeProgress.checkpoint('shutdown');if(wake)wake();});
@@ -107,8 +171,29 @@ async function main(){
         const claimed=await claim(task);
         if(claimed){
           log('execution_start',{id:task.id,taskNumber:displayTask(claimed).number});
+          const gitState={before:null,error:null};
+          if(autoCommitEnabled){
+            try{
+              gitState.before=await inspectRepository({cwd:DIR});
+              log('task_git_start',{
+                id:task.id,
+                clean:gitState.before.clean,
+                head:gitState.before.head
+              });
+            }catch(e){
+              gitState.error=e.message;
+              log('task_git_inspect_failed',{id:task.id,error:e.message});
+            }
+          }
           activeProgress=progressFor(claimed);
-          try{await finish(claimed,await execute(task.instruction,claimed,activeProgress),activeProgress);}
+          try{
+            await finish(
+              claimed,
+              await execute(task.instruction,claimed,activeProgress),
+              activeProgress,
+              gitState
+            );
+          }
           finally{await activeProgress.close('shutdown');activeProgress=undefined;}
           continue;
         }

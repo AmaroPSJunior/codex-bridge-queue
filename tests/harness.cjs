@@ -18,6 +18,7 @@ function harness(t,file,options={}) {
   if(name==='./task-progress')return require('../task-progress');
   if(name==='./task-tts')return require('../task-tts');
   if(name==='./task-display')return require('../task-display');
+  if(name==='./task-git')return options.modules?.[name]||require('../task-git');
   if(name==='child_process')return {spawn};
   if(options.modules?.[name])return options.modules[name];
   if(['fs','path','crypto'].includes(name))return require(name);
