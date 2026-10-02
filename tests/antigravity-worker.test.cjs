@@ -25,7 +25,7 @@ test('AI_PROVIDER=codex usa Codex',async t=>{
 test('AI_PROVIDER=antigravity chama agy com JSON headless no workspace',async t=>{
   const {h,result}=await execute(t,{AI_PROVIDER:'antigravity'});
   assert.equal(h.calls[0].command,'agy');
-  assert.deepEqual(Array.from(h.calls[0].args),['--print','--output-format','json','prompt literal']);
+  assert.deepEqual(Array.from(h.calls[0].args),['--print=prompt literal','--output-format','json']);
   assert.equal(h.calls[0].opts.shell,false);
   assert.equal(h.calls[0].opts.cwd,h.context.__dirname);
   assert.equal(result.code,0);

@@ -102,7 +102,7 @@ function normalizeAntigravity(stdout,stderr='',spawnError=null){
   return {status:'failed',answer:typeof parsed.response==='string'?parsed.response:'',error:parsed.error||spawnError||stderr||'agy terminou com status de erro.'};
 }
 function executeAntigravity(prompt,task={},progress){
-  const args=['--print','--output-format','json',prompt];
+  const args=['--print='+prompt,'--output-format','json'];
   let cancel=()=>{};
   const result=new Promise(resolve=>{
     const child=spawn('agy',args,{cwd:DIR,shell:false,stdio:['ignore','pipe','pipe'],env:{...process.env}});
