@@ -188,7 +188,7 @@ async function finish(task,run,progress,gitState={}){
   });
 
   if(process.env.AI_PROVIDER==='antigravity'){
-    await speak(displayTask(task),{status:ok?'completed':'failed',answer:result,error});
+    void speak(displayTask(task),{status:ok?'completed':'failed',answer:result,error});
   }
 
   log('execution_finish',{
