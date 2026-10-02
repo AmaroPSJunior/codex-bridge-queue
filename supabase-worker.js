@@ -3,6 +3,7 @@ const fs=require('fs'),path=require('path'),{spawn}=require('child_process');
 const {displayTask,taskSummary}=require('./task-display');
 const {createProgress,localLog,sanitizer,commandStream}=require('./task-progress');
 const {inspectRepository,commitTaskChanges}=require('./task-git');
+const {createSpeaker}=require('./task-tts');
 const DIR=__dirname, STATE=path.join(DIR,'supabase-state');
 const config=JSON.parse(fs.readFileSync(path.join(DIR,'remote-config.json')));
 const sb=config.supabase||{};
@@ -13,7 +14,9 @@ const autoCommitEnabled=
 const url=(process.env.CODEX_SUPABASE_URL||sb.url||'').replace(/\/$/,'');
 const key=process.env.CODEX_SUPABASE_SERVICE_ROLE_KEY||'';
 const pollSeconds=Number(sb.pollSeconds||config.pollSeconds||15);
+const DEFAULT_EXECUTION_TIMEOUT_MS=900000;
 fs.mkdirSync(STATE,{recursive:true,mode:0o700}); process.umask(0o077);
+const speak=createSpeaker({spawn,setTimeout,clearTimeout,env:process.env});
 function log(event,data={}){console.log(JSON.stringify({at:new Date().toISOString(),transport:'supabase',event,...data}));}
 function headers(extra={}){return {apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json',...extra};}
 async function request(route,options={}){
@@ -61,7 +64,13 @@ function progressFor(task){
   progress.close=async stage=>{try{await close(stage);}finally{if(!fileClosed){fileClosed=true;try{file?.close();}catch{log('progress_local_log_close_failed');}}}};
   return progress;
 }
-function execute(prompt,task={},progress){
+function executionTimeoutMs(){
+  const value=process.env.CODEX_BRIDGE_TIMEOUT_MS||'';
+  const number=Number(value);
+  return /^\d+$/.test(value)&&Number.isSafeInteger(number)&&number>0&&number<=2147483647
+    ? number : DEFAULT_EXECUTION_TIMEOUT_MS;
+}
+function executeCodex(prompt,task={},progress){
   return new Promise(resolve=>{
     const child=spawn(path.join(process.env.PREFIX||'/data/data/com.termux/files/usr','bin/codex-bridge'),[prompt],{
       shell:false,stdio:['ignore','pipe','pipe'],env:{...process.env,CODEX_BRIDGE_JSON:'1',CODEX_BRIDGE_PROGRESS:progress?'1':'0',CODEX_BRIDGE_TASK_TRANSPORT:'supabase',CODEX_BRIDGE_TASK_NUMBER:displayTask(task).number||'',CODEX_BRIDGE_TASK_TITLE:displayTask(task).title,CODEX_BRIDGE_THREAD_FILE:path.join(DIR,'supabase-thread-id')}
@@ -84,6 +93,42 @@ function execute(prompt,task={},progress){
     child.on('error',e=>{void done(1,e.message);});
     child.on('close',code=>{void done(code);});
   });
+}
+function normalizeAntigravity(stdout,stderr='',spawnError=null){
+  let parsed;
+  try{parsed=JSON.parse(String(stdout||'').trim());}catch{}
+  if(!parsed||typeof parsed!=='object')return {status:'failed',answer:'',error:spawnError||'Resposta JSON inválida do agy.'};
+  if(parsed.status==='SUCCESS')return {status:'completed',answer:typeof parsed.response==='string'?parsed.response:String(parsed.response||''),error:null};
+  return {status:'failed',answer:typeof parsed.response==='string'?parsed.response:'',error:parsed.error||spawnError||stderr||'agy terminou com status de erro.'};
+}
+function executeAntigravity(prompt,task={},progress){
+  const args=['--print','--output-format','json',prompt];
+  let cancel=()=>{};
+  const result=new Promise(resolve=>{
+    const child=spawn('agy',args,{cwd:DIR,shell:false,stdio:['ignore','pipe','pipe'],env:{...process.env}});
+    let stdout='',stderr='',settled=false,timeoutHandle;
+    const finish=(code,error)=>{
+      if(settled)return;settled=true;
+      if(timeoutHandle!==undefined)clearTimeout(timeoutHandle);
+      const normalized=normalizeAntigravity(stdout,stderr,error);
+      void Promise.resolve(progress?.commandComplete?.(code)).then(()=>resolve({
+        code:code===0&&normalized.status==='completed'?0:1,
+        stdout:JSON.stringify(normalized),stderr,...(error?{error}: {})
+      }));
+    };
+    cancel=()=>{if(!settled)child.kill?.('SIGTERM');};
+    timeoutHandle=setTimeout(()=>{cancel();finish(1,'Timeout após '+executionTimeoutMs()+' ms; agy foi encerrado.');},executionTimeoutMs());
+    timeoutHandle?.unref?.();
+    child.stdout.on('data',d=>{stdout+=d;progress?.feed(d,'stdout');});
+    child.stderr.on('data',d=>{stderr+=d;progress?.feed(d,'stderr');});
+    child.on('error',e=>finish(1,e.message));
+    child.on('close',code=>finish(code));
+  });
+  result.cancel=cancel;
+  return result;
+}
+function execute(prompt,task={},progress){
+  return process.env.AI_PROVIDER==='antigravity' ? executeAntigravity(prompt,task,progress) : executeCodex(prompt,task,progress);
 }
 async function finish(task,run,progress,gitState={}){
   let parsed; try{parsed=JSON.parse(run.stdout.trim());}catch{}
@@ -142,6 +187,10 @@ async function finish(task,run,progress,gitState={}){
     body:JSON.stringify(completion)
   });
 
+  if(process.env.AI_PROVIDER==='antigravity'){
+    await speak(displayTask(task),{status:ok?'completed':'failed',answer:result,error});
+  }
+
   log('execution_finish',{
     id:task.id,
     taskNumber:displayTask(task).number,
@@ -159,8 +208,8 @@ async function finish(task,run,progress,gitState={}){
     git_files:gitResult.files||[]
   };
 }
-let stopping=false,wake;
-for(const sig of ['SIGTERM','SIGINT'])process.on(sig,()=>{stopping=true;if(activeProgress)void activeProgress.checkpoint('shutdown');if(wake)wake();});
+let stopping=false,wake,activeExecution;
+for(const sig of ['SIGTERM','SIGINT'])process.on(sig,()=>{stopping=true;if(activeExecution?.cancel)activeExecution.cancel();if(activeProgress)void activeProgress.checkpoint('shutdown');if(wake)wake();});
 async function main(){
   if(!url||!key)throw Error('Defina CODEX_SUPABASE_SERVICE_ROLE_KEY; URL pode vir de remote-config.json ou CODEX_SUPABASE_URL.');
   log('started',{url,pollSeconds});
@@ -187,14 +236,15 @@ async function main(){
           }
           activeProgress=progressFor(claimed);
           try{
+            activeExecution=execute(task.instruction,claimed,activeProgress);
             await finish(
               claimed,
-              await execute(task.instruction,claimed,activeProgress),
+              await activeExecution,
               activeProgress,
               gitState
             );
           }
-          finally{await activeProgress.close('shutdown');activeProgress=undefined;}
+          finally{activeExecution=undefined;await activeProgress.close('shutdown');activeProgress=undefined;}
           continue;
         }
       }
