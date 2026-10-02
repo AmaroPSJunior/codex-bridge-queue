@@ -51,6 +51,9 @@ def credential():
 
 def supervise(fd):
     env = os.environ.copy()
+    local_bin = str(Path.home() / '.local' / 'bin')
+    env['PATH'] = local_bin + os.pathsep + env.get('PATH', '')
+    env['AI_PROVIDER'] = 'antigravity'
     env['CODEX_SUPABASE_SERVICE_ROLE_KEY'] = credential()
     config = json.loads((ROOT / 'remote-config.json').read_text())
     env['CODEX_SUPABASE_URL'] = config['supabase']['url']

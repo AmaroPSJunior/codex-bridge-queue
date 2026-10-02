@@ -71,6 +71,12 @@ class AutostartTests(unittest.TestCase):
         self.assertFalse(self.private.exists())
         self.assertFalse((self.home / '.bashrc').exists())
 
+    def test_launcher_persists_antigravity_provider_and_local_bin(self):
+        source = self.launcher.read_text()
+        self.assertIn("env['AI_PROVIDER'] = 'antigravity'", source)
+        self.assertIn("Path.home() / '.local' / 'bin'", source)
+        self.assertIn("env['PATH'] = local_bin + os.pathsep", source)
+
     def test_credential_permissions_and_symlinks_rejected(self):
         self.install(self.fake)
         local = module(self.launcher, 'launcher_secure')
