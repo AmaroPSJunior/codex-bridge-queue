@@ -81,3 +81,5 @@ O diagnóstico real faz apenas `status`, consulta de branch e `log`; não mostra
 Resultados desta execução: leitura Git do projeto aprovada; operações de escrita e commit aprovados na fixture descartável; índice do projeto inalterado. Nenhum commit foi criado no projeto e nenhum push foi executado. Testes simulados cobrem perfil em thread nova/retomada, turno, defaults preservados, rejeição sem fallback e bloqueio de seleção do perfil irrestrito embutido.
 
 Reversão operacional: remover a variável `CODEX_BRIDGE_PERMISSIONS_PROFILE` do ambiente de inicialização e selecionar o perfil anterior em nova sessão. Se o operador adicionou o bloco `permissions.bridge-git`, removê-lo ou restaurar o backup, sem substituir outras configurações. Como nada foi ativado nesta execução, não há alteração de permissões a desfazer. O suporte opcional no código pode permanecer inativo.
+
+Smoke test Git pós-correção: OK (UTC 2026-10-04T12:33:18.576Z)
