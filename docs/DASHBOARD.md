@@ -40,7 +40,7 @@ flowchart LR
 O HTML pode ser público no GitHub Pages; **as tarefas não são públicas**. O modo autenticado só acessa RPCs de leitura após login com uma conta autorizada. O modo público opcional mostra apenas um snapshot de indicadores agregados; veja [experiência executiva e configuração pública](DASHBOARD-EXPERIENCE.md). Não habilite `SELECT` geral para `anon`/`authenticated` em `bridge_tasks` nem publique eventos brutos dessa tabela para o navegador.
 
 1. Um administrador revisa e aplica `database/dashboard-read.sql` no projeto correto. A migração cria funções; não altera os estados, colunas, RLS, grants ou claim da fila. `task-identity.sql` e `task-progress.sql` continuam migrações separadas. Projeção JSON tolera suas colunas ausentes.
-2. No Supabase Auth, criar/convidar a conta de operador. Via Admin API segura ou SQL administrativo, definir **app_metadata** `bridge_dashboard: true`. Não usar `user_metadata`, editável pelo usuário. Conta sem essa autorização é recusada mesmo autenticada.
+2. No Supabase Auth, criar/convidar contas do projeto. A nova política permite os resumos de leitura a contas autenticadas **não anônimas**, sem exigir papel de administrador. **app_metadata** `bridge_dashboard: false` bloqueia explicitamente uma conta; `bridge_dashboard: true` antigo continua compatível. Não usar `user_metadata`. Essa política compartilha os resumos entre contas do projeto: não é segregação por organização/tenant. Instalações existentes devem revisar/aplicar apenas `database/dashboard-authenticated-read.sql` para atualizar a função de autorização; este trabalho não aplicou SQL remoto. Até essa aplicação, a autorização antiga continua valendo.
 3. Por padrão os logs não são retornados. Somente após validar a versão/redação do worker em produção, conceder à conta **app_metadata** `bridge_dashboard_logs: true`. Título/progresso também devem conter conteúdo apropriado aos operadores autorizados. Se não for possível verificar a sanitização, **não habilitar logs**.
 4. Para avisos ao vivo, revisar/aplicar `database/dashboard-realtime.sql`. Requer `realtime.send` e Realtime habilitado. Auditar políticas existentes em `realtime.messages`: políticas permissivas se combinam com OR, portanto outra política ampla pode tornar a restrição ineficaz. O tópico privado é `bridge-dashboard`.
 5. Configurar somente valores públicos no build e abrir “Conectar” no site:
@@ -54,7 +54,7 @@ python3 -m http.server 4173 --bind 127.0.0.1 --directory dashboard/dist
 
 O exemplo é um placeholder, não uma credencial válida. O build aceita apenas chave **publishable** moderna, rejeita JWT/`service_role`/`sb_secret_`. Ele não lê a chave privada do worker. Nunca substituir o placeholder por service_role. A chave publicável identifica o projeto, não autoriza a leitura da fila. Não existe variável de senha/token administrativo no frontend.
 
-O login usa Supabase Auth e mantém a sessão somente na memória da aba; recarregar exige novo login. A senha não é persistida pela aplicação. Use uma senha exclusiva para a conta. O SDK Supabase é carregado de jsDelivr, versão fixa `2.91.0`, somente ao conectar. A demonstração não depende desse CDN. Ambientes que proíbem CDN devem empacotar/auditar o SDK localmente antes de publicar; não remover a autenticação.
+O login usa a persistência nativa do Supabase Auth (`persistSession: true`, `autoRefreshToken: true`), com sessão no armazenamento do navegador gerenciado pelo SDK. O reload restaura a sessão e verifica o usuário com Auth antes de abrir o painel; cada RPC continua autorizada no backend. A aplicação não cria armazenamento manual de tokens nem persiste senha, tarefas ou logs. “Sair” chama `signOut({scope: "local"})`, encerra Realtime e limpa dados privados da UI; descartar conexão/recarregar não faz logout. Logout em outra aba é observado, e a rotação de token atualiza Realtime. Falha transitória de rede não apaga sessão. Revogação, expiração imposta pelo servidor, remoção do armazenamento ou navegação privada podem exigir login novamente; não se promete sessão eterna. Em aparelho compartilhado, clique Sair ao terminar. Um site estático não dispõe de cookies HttpOnly de backend: preserve CSP, escape de conteúdo, SDK fixado e proteção contra XSS. Use uma senha exclusiva para a conta. O SDK Supabase é carregado de jsDelivr, versão fixa `2.91.0`, somente ao conectar. A demonstração não depende desse CDN. Ambientes que proíbem CDN devem empacotar/auditar o SDK localmente antes de publicar; não remover a autenticação.
 
 ### Contrato de leitura
 
@@ -121,3 +121,25 @@ Para alterar os visuais: `dashboard/styles.css`; telas: `app.mjs`; dados/autenti
 O dashboard não exige reinício do worker. Se as alterações anteriores de progresso/identidade ainda não estiverem carregadas, ativá-las em uma manutenção controlada separada antes de autorizar logs.
 
 Referências: [Broadcast](https://supabase.com/docs/guides/realtime/broadcast), [autorização Realtime](https://supabase.com/docs/guides/realtime/authorization), [funções e SECURITY DEFINER](https://supabase.com/docs/guides/database/functions).
+
+## Revisão dos bloqueios de acesso
+
+- Não havia checagem de papel administrador no frontend. Navegação, tarefas, histórico
+  e sistema usam as RPCs; foi removida a exigência de opt-in `bridge_dashboard: true`
+  dessas leituras na proposta SQL, mantendo bloqueio explícito `false` e recusando
+  contas anônimas. Aplique o SQL incremental antes de considerar isso ativo no remoto.
+- Logs não exigem papel admin, mas continuam exigindo `bridge_dashboard_logs: true`
+  definido pelo backend e `output_available` retornado pela RPC. A UI nunca força
+  essa capacidade. A sanitização em produção precisa ser verificada antes da concessão.
+- Nenhum acesso direto à tabela, instruções/resultados completos, segredos ou controle
+  de worker foi liberado. Dashboard continua somente leitura e Realtime privado.
+- SQL e testes cobrem conta normal, logs negados/liberados, revogação explícita e anon.
+  `tests/dashboard-auth.test.cjs` cobre persistência/rotação/logout;
+  `tests/dashboard-auth-dom.cjs` cobre login, reload, quatro telas, logs e logout
+  com Auth simulado em DOM. Não substitui homologação com conta real autorizada.
+
+### Acompanhar a execução sem gastar tokens
+
+O cartão da tarefa mostra uma estimativa local por etapa, sem chamadas de IA: aguardando 0%, preparando 10%, execução sem etapa específica 25%, testes 65%, commit 80%, publicação 90% e finalização 95%. As etapas são reconhecidas somente na mensagem de progresso já recebida; não são deduzidas do nome da tarefa. O percentual informado explicitamente pelo backend tem prioridade (limitado a 99% durante execução). Apenas sucesso confirma 100%; falha/cancelamento não inventam um percentual. A estimativa pode diminuir quando a tarefa retorna a uma etapa e não representa tempo restante.
+
+A atividade considera o último progresso confirmado (ou início, quando ainda não houve progresso): abaixo de 2 minutos, atividade recente; a partir de 2 minutos, atenção; a partir de 5 minutos, possível travamento. Silêncio não confirma falha: um comando longo pode não produzir saída. Sem conexão ao vivo, mostramos recuperação da conexão, não diagnóstico de travamento. Ícones e texto acompanham as cores. O tempo relativo muda localmente a cada segundo, sem consultas adicionais. Realtime e o fallback existente atualizam os dados; Atualizar continua disponível. A sequência de progresso permanece em detalhes técnicos e nunca calcula porcentagem. Nenhum log adicional é consultado para esta visualização.

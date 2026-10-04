@@ -117,10 +117,11 @@ class AutostartTests(unittest.TestCase):
         groq_secret = self.private / 'groq_api_key'
         groq_secret.write_text('synthetic-groq-test-only')
         groq_secret.chmod(0o600)
-        (self.repo / 'supabase-worker.js').write_text("console.log(process.env.CODEX_SUPABASE_SERVICE_ROLE_KEY); console.log(JSON.stringify({event:'started'})); setInterval(()=>{},1000);\n")
+        (self.repo / 'supabase-worker.js').write_text("require('fs').writeFileSync('profile-test.txt',process.env.CODEX_BRIDGE_PERMISSIONS_PROFILE||'missing'); console.log(process.env.CODEX_SUPABASE_SERVICE_ROLE_KEY); console.log(JSON.stringify({event:'started'})); setInterval(()=>{},1000);\n")
         env = os.environ.copy()
         env['HOME'] = str(self.home)
         env.pop('CODEX_SUPABASE_SERVICE_ROLE_KEY', None)
+        env.pop('CODEX_BRIDGE_PERMISSIONS_PROFILE', None)
         local = module(self.launcher, 'launcher')
         children = [subprocess.Popen([sys.executable, str(self.launcher)], env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE) for _ in range(12)]
         try:
@@ -132,11 +133,13 @@ class AutostartTests(unittest.TestCase):
             while time.monotonic() < deadline:
                 pids = local.workers()
                 log = self.repo / 'logs/supabase-worker.log'
-                if pids and log.exists() and 'started' in log.read_text():
+                if pids and log.exists() and 'started' in log.read_text() and (self.repo / 'profile-test.txt').exists():
                     break
                 time.sleep(0.05)
+            self.assertEqual((self.repo / 'profile-test.txt').read_text(), 'bridge-git')
             self.assertEqual(len(local.workers()), 1)
             subprocess.run([sys.executable, str(self.launcher)], env=env, check=True)
+            self.assertEqual((self.repo / 'profile-test.txt').read_text(), 'bridge-git')
             self.assertEqual(len(local.workers()), 1)
             self.assertNotIn(self.fake, log.read_text())
             self.assertEqual(stat.S_IMODE(log.stat().st_mode), 0o600)

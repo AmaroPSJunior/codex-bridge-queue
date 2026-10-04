@@ -47,3 +47,21 @@ inicialização no boot do dispositivo.
 O supervisor externo agora permanece vivo e aceita restart durável após confirmação
 de publicação/ociosidade. Veja [controle pela fila e bootstrap inicial](../docs/WORKER-CONTROL.md).
 Não envie controles ao worker antigo antes da transição inicial documentada.
+
+### Perfil Git persistente
+
+O launcher fornece `CODEX_BRIDGE_PERMISSIONS_PROFILE=bridge-git` ao worker quando
+não há override explícito. O worker também aplica esse padrão na inicialização,
+para permitir atualização com um supervisor antigo sem reiniciar o supervisor.
+O `bridge.js` envia o perfil nomeado ao app-server em thread/turn, mantendo
+`approvalPolicy=never`. O perfil deve existir em `~/.codex/config.toml`; a ausência
+é erro, sem fallback silencioso para permissões mais amplas. Não é necessário
+alterar `.bashrc`: ela já chama o launcher. Nenhuma credencial faz parte dessa configuração.
+
+Para verificar, use `python3 autostart/supabase-launcher.py --status` e os testes
+`tests/test_supabase_autostart.py` e `tests/bridge.test.cjs`. O ambiente de um
+supervisor antigo não muda em disco: o padrão do worker passa a valer no próximo
+restart drenado. Um pedido de restart durante uma tarefa aguarda resultado
+publicado, recibos reconciliados e workspace liberado; não encerre esse worker à força.
+Para reverter, remova os dois padrões adicionados no launcher e worker, ou selecione
+outro perfil restrito provisionado pelo operador via variável de ambiente.

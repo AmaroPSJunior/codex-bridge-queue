@@ -38,7 +38,7 @@ def main():
         sql(f"GRANT USAGE ON SCHEMA {schema} TO anon,authenticated; CREATE TABLE {auth}.users(id uuid,raw_app_meta_data jsonb); INSERT INTO {auth}.users VALUES ('{uid}','{{}}'); CREATE FUNCTION {auth}.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;")
         sql(f"CREATE TABLE {schema}.bridge_tasks(id uuid PRIMARY KEY,instruction text,status text,created_at timestamptz DEFAULT now(),claimed_at timestamptz,completed_at timestamptz,updated_at timestamptz); INSERT INTO {schema}.bridge_tasks(id,instruction,status) VALUES ('{tid}','PRIVATE INSTRUCTION','queued');")
         sql(migration('dashboard-read.sql')); sql(migration('dashboard-read.sql'))
-        read(f'SELECT {schema}.bridge_dashboard_list();', fail=True)
+        read(f'SELECT {schema}.bridge_dashboard_list();')
         sql(f"SET ROLE anon; SELECT {schema}.bridge_dashboard_list();", fail=True)
         sql(f"UPDATE {auth}.users SET raw_app_meta_data='{{\"bridge_dashboard\":true}}';")
         rows = json.loads(read(f'SELECT {schema}.bridge_dashboard_list();'))
@@ -72,7 +72,7 @@ def main():
         sql(f"CREATE OR REPLACE FUNCTION {realtime}.send(jsonb,text,text,boolean) RETURNS void LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture unavailable'; END $$;")
         sql(f"UPDATE {schema}.bridge_tasks SET status='succeeded';")
         assert sql(f'SELECT status FROM {schema}.bridge_tasks;') == 'succeeded'
-        print('DASHBOARD SQL PASSED: denied anon/unapproved, no direct table access, legacy schema, bigint, redaction gate, bounds, aggregates, idempotence, private minimal broadcast, queue isolation.')
+        print('DASHBOARD SQL PASSED: denied anon; authenticated summaries, no direct table access, legacy schema, bigint, redaction gate, bounds, aggregates, idempotence, private minimal broadcast, queue isolation.')
     finally:
         sql(f'DROP SCHEMA IF EXISTS {schema} CASCADE; DROP SCHEMA IF EXISTS {private} CASCADE; DROP SCHEMA IF EXISTS {auth} CASCADE; DROP SCHEMA IF EXISTS {realtime} CASCADE;')
     return 0

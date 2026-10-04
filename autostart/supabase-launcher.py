@@ -82,6 +82,8 @@ def credential():
 def supervise(lock_fd):
     validate_lock(lock_fd)
     env = os.environ.copy()
+    # Operator-provisioned named profile; app-server rejects missing profiles.
+    env['CODEX_BRIDGE_PERMISSIONS_PROFILE'] = env.get('CODEX_BRIDGE_PERMISSIONS_PROFILE') or 'bridge-git'
     local_bin = str(Path.home() / '.local' / 'bin')
     env['PATH'] = local_bin + os.pathsep + env.get('PATH', '')
     # Worker resolves task > inherited AI_PROVIDER > private provider.json > codex.

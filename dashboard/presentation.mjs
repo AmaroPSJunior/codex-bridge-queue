@@ -5,3 +5,25 @@ export function providerName(id){return ({codex:'Codex',groq:'Groq',antigravity:
 export function providerHealth(value){return ({ready:['✓','Disponível'],quota_exceeded:['◷','Limite atingido'],auth_error:['!','Conexão precisa de atenção'],unavailable:['!','Indisponível']})[value]||['○','Sem informação recente'];}
 export function stages(task){const current=task.status==='queued'?0:task.status==='running'?1:2;return ['Na fila','Em execução','Resultado'].map((label,i)=>({label,state:i<current?'done':i===current?'current':'next'}));}
 export function quotaLabel(task){return typeof task.quota_remaining_percent==='number'&&task.quota_remaining_percent>=0&&task.quota_remaining_percent<=100?task.quota_remaining_percent+'% disponível':'Não informada';}
+
+// Estimates use only existing sanitized stage messages, never token-consuming inference.
+export function taskProgress(task){
+ const terminal={succeeded:'Concluída',failed:'Execução interrompida por falha',cancelled:'Cancelada'};
+ if(terminal[task.status])return {value:task.status==='succeeded'?100:null,label:terminal[task.status],estimated:false};
+ if(task.status==='queued')return {value:0,label:'Aguardando início',estimated:true};
+ const message=String(task.progress_message||'').toLowerCase();
+ const stage=[[/finalizando|finalizing/,95,'Finalizando'],[/git push|publicando|publishing/,90,'Publicando no GitHub'],[/git commit|fazendo commit|committing/,80,'Fazendo commit'],[/executando testes|running tests|npm test|validando testes/,65,'Executando testes'],[/preparando|preparing/,10,'Preparando execução']].find(([pattern])=>pattern.test(message));
+ const reported=progressValue(task);
+ return {value:reported===null?(stage?.[1]??25):Math.min(99,reported),label:stage?.[2]??'Executando a tarefa',estimated:reported===null};
+}
+export function taskActivity(task,now=Date.now(),connection='live'){
+ const timestamp=Date.parse(task.last_progress_at||task.claimed_at||'');
+ const age=Number.isFinite(timestamp)?Math.max(0,Math.floor((now-timestamp)/1000)):null;
+ const since=age===null?'Sem atualização confirmada':age<60?`Atualização há ${age}s`:`Atualização há ${Math.floor(age/60)} min`;
+ if(task.status!=='running')return {level:'quiet',text:'○ Execução não está em andamento',since};
+ if(!['live','demo'].includes(connection))return {level:'attention',text:'! Conexão em recuperação — atividade não confirmada',since};
+ if(age===null)return {level:'attention',text:'! Aguardando sinal de atividade',since};
+ if(age>=300)return {level:'stalled',text:'! Possível travamento — sem novidades; não confirma falha',since};
+ if(age>=120)return {level:'attention',text:'◷ Sem novidades recentes — a tarefa pode continuar trabalhando',since};
+ return {level:'normal',text:'● Atividade recente',since};
+}

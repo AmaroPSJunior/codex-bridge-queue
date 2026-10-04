@@ -1,4 +1,7 @@
 'use strict';
+// Also covers relaunch by an already-running supervisor with an older environment.
+// This selects the operator-defined profile; it never edits sandbox permissions.
+process.env.CODEX_BRIDGE_PERMISSIONS_PROFILE ||= 'bridge-git';
 const fs=require('fs'),path=require('path'),{spawn}=require('child_process');
 const workerControl=require('./executors/worker-control');
 const {mode:executionMode,executeCommand}=require('./executors/command');
