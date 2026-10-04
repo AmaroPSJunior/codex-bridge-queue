@@ -4,6 +4,8 @@ const path = require('path');
 const http = require('http');
 const {spawn} = require('child_process');
 const {createSpeaker} = require('./task-tts');
+const {acquire:acquireWorkspace}=require('./executors/workspace-lock');
+let workspaceLease,workspaceMayRun=false;
 const speak = createSpeaker({spawn,setTimeout,clearTimeout,env:process.env});
 const DIR = path.join(process.env.HOME, 'codex-bridge');
 const THREAD_FILE = process.env.CODEX_BRIDGE_THREAD_FILE || path.join(DIR, 'thread-id');
@@ -21,7 +23,7 @@ const timeoutNumber = Number(timeoutSetting);
 const TIMEOUT_MS = /^\d+$/.test(timeoutSetting) && Number.isSafeInteger(timeoutNumber) && timeoutNumber > 0 && timeoutNumber <= 2147483647
   ? timeoutNumber : DEFAULT_TIMEOUT_MS;
 const prompt = process.argv.slice(2).join(' ').trim();
-const WS_URL = 'ws://127.0.0.1:8765';
+const WS_URL = 'ws://127.0.0.1:8766';
 // Operator-selected profile, resolved and enforced by app-server. No automatic grant.
 // Named profiles and legacy sandbox fields are mutually exclusive in protocol 0.156.1.
 const PERMISSIONS_PROFILE = process.env.CODEX_BRIDGE_PERMISSIONS_PROFILE || '';
@@ -47,6 +49,7 @@ if (process.env.CODEX_BRIDGE_LOCKED !== THREAD_FILE) {
   child.on('exit', (code) => process.exit(code ?? 1));
 } else {
   main().catch(async e => {
+    if(workspaceLease){if(workspaceMayRun)workspaceLease.retain();else workspaceLease.release();}
     console.error(e.message);
     if (TTS_ENABLED) await speak(SPEECH_TASK,{status:'failed',error:e.message});
     process.exitCode=1;
@@ -54,12 +57,13 @@ if (process.env.CODEX_BRIDGE_LOCKED !== THREAD_FILE) {
 }
 function ready() {
   return new Promise(resolve => {
-    const req = http.get('http://127.0.0.1:8765/readyz', res => {res.resume(); resolve(res.statusCode===200);});
+    const req = http.get('http://127.0.0.1:8766/readyz', res => {res.resume(); resolve(res.statusCode===200);});
     req.on('error', () => resolve(false));
     req.setTimeout(1000, () => {req.destroy(); resolve(false);});
   });
 }
 async function main() {
+  workspaceLease=acquireWorkspace(DIR,process.env.CODEX_BRIDGE_WORKSPACE_TOKEN);
   if (!await ready()) {
     const out = fs.openSync(path.join(DIR, 'logs/app-server.log'), 'a', 0o600);
     const child = spawn('codex', ['app-server', '--listen', WS_URL], {detached:true, stdio:['ignore',out,out]});
@@ -79,10 +83,11 @@ async function main() {
     }
   };
   const timeout = setTimeout(()=>finish('Timeout após '+TIMEOUT_MS+' ms; o turno pode continuar no app-server. Não reenviar automaticamente. Consulte o estado antes de tentar novamente.'),TIMEOUT_MS);
-  function finish(error) {
+  function finish(error, terminal=false) {
     if (finished) return;
     finished=true; clearTimeout(timeout);
-    if (JSON_MODE) console.log(JSON.stringify({threadId,turnId,status:error?'failed':'completed',answer,error:error||null}));
+    if(terminal)workspaceLease.release();else workspaceLease.retain();
+    if (JSON_MODE) console.log(JSON.stringify({threadId,turnId,status:error?'failed':'completed',answer,error:error||null,...(process.env.CODEX_BRIDGE_WORKSPACE_TOKEN?{workspaceReleased:terminal}:{})}));
     else if (error) console.error(error);
     else console.log('\n--- CODEX ---\n'+(answer||'(sem resposta textual)')+'\n-------------\nThread: '+threadId);
     if (TTS_ENABLED) void speak(SPEECH_TASK,{status:error?'failed':'completed',answer,error});
@@ -125,7 +130,7 @@ async function main() {
     }
     if (msg.method==='item/completed' && p.turnId===turnId && p.item?.type==='agentMessage') answer=p.item.text||answer;
     if (msg.method==='turn/completed' && p.turn?.id===turnId) {
-      finish(p.turn.status==='completed'?null:JSON.stringify(p.turn.error||{status:p.turn.status}));
+      finish(p.turn.status==='completed'?null:JSON.stringify(p.turn.error||{status:p.turn.status}),true);
     }
   });
   ws.on('error', e=>finish('Erro WebSocket: '+e.message));
@@ -135,10 +140,12 @@ async function main() {
       await rpc('initialize',{clientInfo:{name:'termux-persistent-bridge',version:'2.1.0'},capabilities:{experimentalApi:true}});
       ws.send(JSON.stringify({jsonrpc:'2.0',method:'initialized',params:{}}));
       const saved=fs.existsSync(THREAD_FILE)?fs.readFileSync(THREAD_FILE,'utf8').trim():'';
-      const result=await rpc(saved?'thread/resume':'thread/start',{...(saved?{threadId:saved}:{}),...permissionParams(),...SPEECH_CONFIG});
+      const result=await rpc(saved?'thread/resume':'thread/start',{...(saved?{threadId:saved}:{cwd:DIR}),...permissionParams(),...SPEECH_CONFIG});
+      if(result?.thread?.cwd && fs.realpathSync(result.thread.cwd)!==fs.realpathSync(DIR))throw Error('Workspace da thread difere do workspace bloqueado.');
       threadId=result?.thread?.id;
       if(!threadId) throw Error('Resposta sem threadId; ponteiro preservado.');
       if(saved!==threadId) {fs.writeFileSync(THREAD_FILE+'.tmp',threadId+'\n',{mode:0o600}); fs.renameSync(THREAD_FILE+'.tmp',THREAD_FILE);}
+      workspaceMayRun=true;
       const turn=await rpc('turn/start',{threadId,...permissionParams(true),input:[{type:'text',text:prompt}]});
       turnId=turn.turn.id;
     } catch(e) {finish(e.message);}

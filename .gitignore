@@ -23,6 +23,9 @@
 !docs/**
 !database/
 !database/**
+!executors/
+!executors/*.js
+!executors/*.md
 # Never include local secrets, caches, or backup artifacts.
 **/__pycache__/
 **/*.pyc
@@ -53,4 +56,7 @@ integrations/**/__pycache__/
 !dashboard/*.md
 dashboard/dist/
 
+# Legacy task-git API remains supported; private backups stay local.
 !task-git.js
+**/*.bak
+**/*.bak.*

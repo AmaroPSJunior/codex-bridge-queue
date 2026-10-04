@@ -34,7 +34,16 @@ python3 "$HOME/codex-bridge/autostart/supabase-launcher.py" --status
 python3 -B "$HOME/codex-bridge/tests/test_supabase_autostart.py"
 ```
 
-O launcher desacopla o worker do terminal. Não é um serviço de reinício
-contínuo: um worker encerrado volta na próxima abertura de Bash interativo.
+O launcher desacopla o worker do terminal. Restart autorizado aguarda a saída
+do filho antes de relançar. Fora dessa transição, se o filho morrer, o supervisor
+termina e libera o flock; a próxima abertura de Bash interativo pode iniciar o worker.
+Não há loop contínuo de reinício após crash. Arquivo de lock órfão é reutilizado
+sem ser apagado; um lock ainda detido ou fence de workspace nunca é forçado.
 O mecanismo não altera configurações de bateria do Android nem configura
 inicialização no boot do dispositivo.
+
+## Controle remoto seguro
+
+O supervisor externo agora permanece vivo e aceita restart durável após confirmação
+de publicação/ociosidade. Veja [controle pela fila e bootstrap inicial](../docs/WORKER-CONTROL.md).
+Não envie controles ao worker antigo antes da transição inicial documentada.

@@ -21,6 +21,12 @@ else
     printf '%s WARNING: wake lock unavailable; check Android battery settings\n' "$(stamp)"
 fi
 cd "$bridge_dir" || exit 1
+# The Supabase supervisor owns a separate singleton lock and returns immediately.
+if python3 "$bridge_dir/autostart/supabase-launcher.py" 9>&-; then
+    printf '%s Supabase supervisor requested\n' "$(stamp)"
+else
+    printf '%s WARNING: Supabase supervisor unavailable\n' "$(stamp)"
+fi
 # Close the boot lock in descendants. remote start has its own worker lock.
 if ./remote start 9>&-; then
     ./remote status 9>&-

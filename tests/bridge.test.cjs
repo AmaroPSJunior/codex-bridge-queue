@@ -14,7 +14,7 @@ async function setup(t,opts={}){
   }
   close(){this.emit('close');}terminate(){}
  }
- const h=harness(t,'bridge.js',{env:{CODEX_BRIDGE_LOCKED:'/fake/thread',CODEX_BRIDGE_THREAD_FILE:'/fake/thread',CODEX_BRIDGE_JSON:'1',...opts.env},argv:['node','bridge.js','literal $(touch never)'],modules:{fs:adapter,ws:Socket,http:{get:(url,cb)=>{const req=new EventEmitter();req.setTimeout=()=>{};req.destroy=()=>{};setImmediate(()=>cb({resume(){},statusCode:200}));return req;}}}});
+ const h=harness(t,'bridge.js',{env:{CODEX_BRIDGE_LOCKED:'/fake/thread',CODEX_BRIDGE_THREAD_FILE:'/fake/thread',CODEX_BRIDGE_JSON:'1',...opts.env},argv:['node','bridge.js','literal $(touch never)'],modules:{...opts.modules,fs:adapter,ws:Socket,http:{get:(url,cb)=>{const req=new EventEmitter();req.setTimeout=()=>{};req.destroy=()=>{};setImmediate(()=>cb({resume(){},statusCode:200}));return req;}}}});
  for(let i=0;i<8;i++)await flush();
  return {h,requests,ws,store,send:(method,params)=>ws.emit('message',JSON.stringify({method,params}))};
 }
@@ -119,3 +119,13 @@ test('Built-in unrestricted profile cannot be selected through bridge option',as
  assert.ok(!b.requests.some(r=>r.method==='thread/start'));assert.equal(JSON.parse(b.h.logs[0]).status,'failed');
 });
 
+test('Bridge workspace fence releases on acknowledged terminal failure, not timeout',async t=>{
+ for(const terminal of [true,false]){
+  const events=[];
+  const b=await setup(t,{env:{CODEX_BRIDGE_WORKSPACE_TOKEN:'synthetic'},modules:{'./executors/workspace-lock':{acquire:(dir,token)=>{events.push(['acquire',token]);return {release:()=>events.push(['release']),retain:()=>events.push(['retain'])};}}}});
+  if(terminal)b.send('turn/completed',{threadId:'thread-test',turn:{id:'turn-test',status:'failed',error:{message:'failed'}}});
+  else b.h.timers.find(x=>x.ms===900000).fn();
+  assert.deepEqual(events,[['acquire','synthetic'],[terminal?'release':'retain']]);
+  assert.equal(JSON.parse(b.h.logs[0]).workspaceReleased,terminal);
+ }
+});

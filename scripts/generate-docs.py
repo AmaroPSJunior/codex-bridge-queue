@@ -5,6 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 import sys
+import subprocess
 import importlib.util
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -13,9 +14,15 @@ ROOT = Path(__file__).resolve().parent.parent
 def source_paths(root=ROOT):
     model = json.loads((root/'docs/model.json').read_text())
     names = set(model['sources'])
-    for pattern in ('*.js', 'autostart/*.py', 'scripts/*.py', 'scripts/*.cjs',
+    for pattern in ('executors/*.js', 'executors/*.md', '*.js', 'autostart/*.py', 'scripts/*.py', 'scripts/*.cjs',
                     'tests/*.py', 'tests/*.cjs', 'database/*.sql', '.github/workflows/*.yml', '.github/ISSUE_TEMPLATE/*.md', 'autostart/*.md', 'integrations/gemini/*.cjs', 'integrations/gemini/*.py'):
         names.update(str(p.relative_to(root)) for p in root.glob(pattern) if p.is_file())
+    # Local ignored experiments/backups must not change published documentation.
+    if (root/'.git').exists():
+        public = set(subprocess.check_output(
+            ['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'],
+            cwd=root).decode().split('\0'))
+        names.intersection_update(public)
     return sorted(names)
 
 
@@ -92,6 +99,10 @@ A ponte entrega seus pedidos ao Codex no Termux e devolve as respostas por GitHu
 - [Detalhes do autostart Supabase](autostart/SUPABASE.md)
 - [Gemini: enviar e consultar tarefas](integrations/gemini/README.md)
 - [Arquitetura multi-IA](docs/MULTI-IA.md)
+- [Metadados Multi-IA e estado dos providers](docs/MULTI-IA-METADATA.md)
+- [Worker Multi-IA ponta a ponta](docs/MULTI-IA-WORKER.md)
+- [Modo híbrido: IA ou comando pronto](docs/EXECUTION-MODES.md)
+- [Contrato comum de executores — etapa 01](executors/README.md)
 - [START HERE, bootstrap e contrato para Gemini e Claude](docs/integrations/AI-QUEUE-ONBOARDING-PROMPT.md)
 - [Números, nomes e estados em português](docs/TASK-IDENTITY.md)
 - [Progresso ao vivo e ativação](docs/PROGRESS.md)

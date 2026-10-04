@@ -113,6 +113,10 @@ class AutostartTests(unittest.TestCase):
 
     def test_concurrent_launch_and_private_filtered_logs(self):
         self.install(self.fake)
+        # Existing launcher loads this private credential even for the fake worker.
+        groq_secret = self.private / 'groq_api_key'
+        groq_secret.write_text('synthetic-groq-test-only')
+        groq_secret.chmod(0o600)
         (self.repo / 'supabase-worker.js').write_text("console.log(process.env.CODEX_SUPABASE_SERVICE_ROLE_KEY); console.log(JSON.stringify({event:'started'})); setInterval(()=>{},1000);\n")
         env = os.environ.copy()
         env['HOME'] = str(self.home)
@@ -138,10 +142,86 @@ class AutostartTests(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(log.stat().st_mode), 0o600)
             self.assertEqual(stat.S_IMODE(log.parent.stat().st_mode), 0o700)
         finally:
+            # The new supervisor intentionally outlives its worker. Stop only the
+            # supervisor launched inside this test's unique temporary repository.
+            supervisor = self.repo / 'supabase-state/control/supervisor.json'
+            if supervisor.exists():
+                pid = json.loads(supervisor.read_text())['pid']
+                args = Path('/proc') / str(pid) / 'cmdline'
+                if args.exists() and str(self.launcher).encode() in args.read_bytes().split(b'\0'):
+                    os.kill(pid, signal.SIGTERM)
             for pid in local.workers():
                 os.kill(pid, signal.SIGTERM)
             time.sleep(0.2)
 
+
+    def test_real_restart_keeps_lock_until_previous_exit_and_relaunches_once(self):
+        self.install(self.fake)
+        # No Groq key: unrelated optional provider must not block Codex startup.
+        (self.repo/'supabase-worker.js').write_text(r"""
+const fs=require('fs'),path=require('path');
+const dir=path.join(__dirname,'supabase-state/control');
+fs.mkdirSync(dir,{recursive:true,mode:0o700});
+function save(name,obj){const p=path.join(dir,name);fs.writeFileSync(p+'.tmp',JSON.stringify(obj),{mode:0o600});fs.renameSync(p+'.tmp',p);}
+fs.appendFileSync(path.join(__dirname,'events'),JSON.stringify({event:'start',pid:process.pid})+'\n');
+save('boot.json',{pid:process.pid,generation:process.env.BRIDGE_SUPERVISOR_GENERATION});
+const timer=setInterval(()=>{try{const r=JSON.parse(fs.readFileSync(path.join(dir,'drain.json')));if(r.pid===process.pid)save('ready.json',r);}catch{}},20);
+process.on('SIGTERM',()=>{clearInterval(timer);setTimeout(()=>{fs.appendFileSync(path.join(__dirname,'events'),JSON.stringify({event:'exit',pid:process.pid})+'\n');process.exit(0);},200);});
+""")
+        env = {k:os.environ[k] for k in ('PATH','TMPDIR','LD_LIBRARY_PATH') if k in os.environ}
+        env['HOME'] = str(self.home)
+        local = module(self.launcher, 'restart_launcher')
+        def wait_for(check):
+            end = time.monotonic()+12
+            while time.monotonic()<end:
+                value=check()
+                if value:return value
+                time.sleep(.03)
+            self.fail('Timed out waiting for isolated supervisor')
+        directory=self.repo/'supabase-state/control'
+        subprocess.run([sys.executable,str(self.launcher)],env=env,check=True)
+        supervisor_pid=None
+        try:
+            wait_for(lambda:(directory/'boot.json').exists())
+            supervisor_pid=json.loads((directory/'supervisor.json').read_text())['pid']
+            old=json.loads((directory/'boot.json').read_text())['pid']
+            local.LOGS=self.repo/'logs'
+            with self.assertRaises(BlockingIOError):local.open_lock()
+            request=directory/'00000000-0000-4000-8000-000000000071.json'
+            request.write_text(json.dumps({'id':request.stem,'version':1,'command':'restart','status':'requested'}))
+            request.chmod(0o600)
+            wait_for(lambda:json.loads(request.read_text()).get('status')=='acknowledged')
+            rows=[json.loads(line) for line in (self.repo/'events').read_text().splitlines()]
+            self.assertEqual([r['event'] for r in rows],['start','exit','start'])
+            self.assertEqual(rows[0]['pid'],old)
+            new=rows[2]['pid']
+            self.assertNotEqual(old,new)
+            self.assertEqual(local.workers(),[new])
+            children=[subprocess.Popen([sys.executable,str(self.launcher)],env=env) for _ in range(4)]
+            for child in children:self.assertEqual(child.wait(timeout=5),0)
+            self.assertEqual(local.workers(),[new])
+            with self.assertRaises(BlockingIOError):local.open_lock()
+            # Only test processes: after an unrequested exit the supervisor must
+            # release its lock, without automatically creating a restart loop.
+            os.kill(new,signal.SIGTERM)
+            wait_for(lambda:json.loads((directory/'supervisor.json').read_text()).get('status')=='stopped')
+            def unlocked():
+                try: fd=local.open_lock()
+                except BlockingIOError:return False
+                os.close(fd);return True
+            wait_for(unlocked)
+            self.assertEqual(local.workers(),[])
+            self.assertEqual(json.loads(request.read_text())['status'],'acknowledged')
+        finally:
+            # Verify ownership before signalling anything; all paths are temporary.
+            if supervisor_pid:
+                proc=Path('/proc')/str(supervisor_pid)/'cmdline'
+                try:
+                    if str(self.launcher).encode() in proc.read_bytes().split(b'\0'):
+                        os.kill(supervisor_pid,signal.SIGTERM)
+                except (FileNotFoundError,ProcessLookupError):pass
+            for pid in local.workers():os.kill(pid,signal.SIGTERM)
+            time.sleep(.3)
 
 if __name__ == '__main__':
     unittest.main()

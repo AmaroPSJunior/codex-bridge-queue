@@ -59,3 +59,14 @@ jobs:
       - run: node tests/dashboard-browser.cjs
         env:
           NODE_PATH: /tmp/dashboard-browser/node_modules
+  multi-ai-sql:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm install --prefix /tmp/multi-ai-sql --ignore-scripts --no-audit --no-fund @electric-sql/pglite@0.3.14
+      - run: node tests/multi-ai-sql.cjs
+        env:
+          NODE_PATH: /tmp/multi-ai-sql/node_modules

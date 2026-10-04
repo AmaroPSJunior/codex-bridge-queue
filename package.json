@@ -4,6 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "provider": "node scripts/provider.cjs",
+    "groq:health": "node scripts/groq-health.cjs",
     "test": "python3 -B scripts/test-offline.py",
     "docs:generate": "python3 -B scripts/generate-docs.py",
     "docs:check": "python3 -B scripts/generate-docs.py --check",

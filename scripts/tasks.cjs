@@ -4,6 +4,7 @@
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const {spawnSync}=require('node:child_process');
 const {shortTitle,displayTask,inferTitle,taskSummary}=require('../task-display');
+const {mode:executionMode,validate:validateCommand}=require('../executors/command');
 const ROOT=path.resolve(__dirname,'..');
 function github(endpoint,method,body){
  const args=['api','--hostname','github.com',endpoint,'--method',method];if(body)args.push('--input','-');
@@ -18,13 +19,16 @@ async function supabase(config,route,method,body){
  if(!r.ok){let code;try{code=(await r.json()).code;}catch{}const e=Error('Supabase request failed; outcome may be uncertain.');e.missingColumn=r.status===400&&['42703','PGRST204'].includes(code);throw e;}return r.json();
 }
 function payload(input,transport){
- const prompt=input.instruction??input.prompt;
+ const mode=executionMode(input);
+ if(mode==='command'&&transport!=='supabase')throw Error('Command requires Supabase');
+ const command=mode==='command'?validateCommand(input.command_payload):null;
+ const prompt=input.instruction??input.prompt??(command?'Executar comando permitido: '+command.command:undefined);
  if(typeof prompt!=='string'||!prompt.trim()||prompt.includes('\0')||Buffer.byteLength(prompt)>24000)throw Error('Invalid instruction');
  const id=input.id??input.task_id??crypto.randomUUID();
  if(transport==='supabase'&&!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id))throw Error('UUID required');
  if(transport==='github'&&!/^[A-Za-z0-9][A-Za-z0-9._-]{7,99}$/.test(id))throw Error('Invalid task_id');
  const title=shortTitle(input.title??input.task_name,transport==='github'?'Tarefa sem título':inferTitle(prompt));
- return transport==='github'?{title,labels:['codex:queued'],body:JSON.stringify({protocol:'codex-bridge/v1',task_id:id,title,prompt})}:{id,title,instruction:prompt,status:'queued'};
+ return transport==='github'?{title,labels:['codex:queued'],body:JSON.stringify({protocol:'codex-bridge/v1',task_id:id,title,prompt})}:{id,title,instruction:prompt,status:'queued',...(command?{execution_mode:'command',command_payload:command}: {})};
 }
 function lookupRoute(transport,id){
  if(transport==='github'){
@@ -51,6 +55,7 @@ async function main(args=process.argv.slice(2)){
    try{await supabase(config,'bridge_tasks?select=task_number,title&limit=0','GET');supported=true;}
    catch(e){if(!e.missingColumn)throw e;}
    if(!supported)delete body.title;
+   if(body.execution_mode==='command')await supabase(config,'bridge_tasks?select=execution_mode,command_payload,command_result&limit=0','GET');
   }
   result=transport==='github'?github('repos/'+config.repository+'/issues','POST',body):(await supabase(config,'bridge_tasks','POST',body))[0];
  }else{

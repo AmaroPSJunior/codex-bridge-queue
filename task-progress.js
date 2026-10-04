@@ -14,7 +14,7 @@ function sanitizer(env={}) {
   // Environment assignments can have arbitrary names, not just *_TOKEN.
   if(/^\s*(?:export\s+)?[A-Z_][A-Z0-9_]*\s*=/.test(s))return '[variável de ambiente omitida]';
   return s.replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g,'[REDACTED]')
-   .replace(/\b(?:sk-|sb_secret_|gh[pousr]_|github_pat_)[A-Za-z0-9_-]+/g,'[REDACTED]')
+   .replace(/\b(?:sk-|gsk_|sb_secret_|gh[pousr]_|github_pat_)[A-Za-z0-9_-]+/g,'[REDACTED]')
    .replace(/\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi,'[identificador omitido]')
    .replace(/\b(?:[0-9a-f]{2}:){5}[0-9a-f]{2}\b/gi,'[MAC omitido]')
    .replace(/\b\d{14,20}\b/g,'[identificador omitido]')

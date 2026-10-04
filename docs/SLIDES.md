@@ -1,4 +1,4 @@
-<!-- Gerado por npm run docs:generate; não editar. Fonte: docs/model.json. SHA256: a0cea21630f2115ad742bb20d58f4183116210a4c25342d5690c5696db02ee46 -->
+<!-- Gerado por npm run docs:generate; não editar. Fonte: docs/model.json. SHA256: 0be5c4f92d5b94a543ec74bef7771597ca8cc1c0011341477cfde321d7a8352e -->
 # Sua ponte entre ChatGPT e o Termux
 
 Uma explicação prática, sem precisar conhecer programação.
@@ -112,11 +112,17 @@ O texto e os slides vêm da mesma fonte versionada, docs/model.json. O gerador c
 
 ---
 
+# Quando não precisa de IA
+
+O modo agent continua usando a IA para analisar o pedido. No modo command, um comando estruturado e previamente permitido é executado diretamente pelo Termux, sem chamar modelo. Texto solto nunca vira comando automático. A ativação requer atualizar o banco e o worker; as primeiras operações são consultar diretório e listar arquivos.
+
+---
+
 # Duas opções de entrega
 
 **GitHub Issues**: Uma tarefa vira um bilhete em uma caixa de entrada privada do GitHub. O Termux lê esse bilhete e escreve a resposta nos comentários. Se houver dúvida após uma interrupção, o bilhete fica como uncertain (resultado incerto), sem repetir a ação automaticamente.
 
-**Supabase**: Uma tarefa vira uma linha na tabela bridge_tasks, como uma linha de uma planilha. O Termux marca que está trabalhando e preenche a resposta na mesma linha. Uma interrupção pode deixar a linha em running (em execução). Não existe recuperação automática dessa linha nem reenvio durável de resultados neste transporte.
+**Supabase**: Uma tarefa vira uma linha na tabela bridge_tasks, como uma linha de uma planilha. O Termux marca que está trabalhando e preenche a resposta na mesma linha. Uma interrupção pode deixar a linha em running (em execução). Resultados já concluídos são preservados em recibos privados para republicação; a tarefa não é executada novamente automaticamente.
 
 ---
 

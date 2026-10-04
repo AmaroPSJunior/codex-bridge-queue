@@ -35,7 +35,12 @@ returns jsonb language sql immutable set search_path = '' as $$
  'progress_message',bridge_dashboard_private.bridge_dashboard_safe(p_row->>'progress_message',160),
  'progress_seq',coalesce(p_row->>'progress_seq','0'), 'last_progress_at',p_row->>'last_progress_at',
  'last_flush_reason',case when p_row->>'last_flush_reason' in ('lines','timeout','command_end','final') then p_row->>'last_flush_reason' else null end,
- 'last_flush_line_count',p_row->'last_flush_line_count');
+ 'last_flush_line_count',p_row->'last_flush_line_count',
+ 'requested_provider',case when p_row->>'requested_provider' in ('codex','antigravity','claude','local','groq','auto') then p_row->>'requested_provider' end,
+ 'actual_provider',case when p_row->>'actual_provider' in ('codex','antigravity','claude','local','groq') then p_row->>'actual_provider' end,
+ 'provider_model',case when p_row->>'provider_model' in ('openai/gpt-oss-120b','openai/gpt-oss-20b') then p_row->>'provider_model' end,
+ 'fallback_from',case when p_row->>'fallback_from' in ('codex','antigravity','claude','local','groq') then p_row->>'fallback_from' end,
+ 'fallback_reason',case when p_row->>'fallback_reason' in ('rate_limit','quota','authentication','permission','network','http','timeout','unavailable','protocol','manual') then p_row->>'fallback_reason' end);
 $$;
 revoke all on function bridge_dashboard_private.bridge_dashboard_projection(jsonb) from public,anon,authenticated;
 

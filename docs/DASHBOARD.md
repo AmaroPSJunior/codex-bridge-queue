@@ -37,7 +37,7 @@ flowchart LR
 
 ## Conectar dados reais com segurança
 
-O HTML pode ser público no GitHub Pages; **as tarefas não são públicas**. O painel só acessa RPCs de leitura após login com uma conta autorizada. Não habilite `SELECT` geral para `anon`/`authenticated` em `bridge_tasks` nem publique eventos brutos dessa tabela para o navegador.
+O HTML pode ser público no GitHub Pages; **as tarefas não são públicas**. O modo autenticado só acessa RPCs de leitura após login com uma conta autorizada. O modo público opcional mostra apenas um snapshot de indicadores agregados; veja [experiência executiva e configuração pública](DASHBOARD-EXPERIENCE.md). Não habilite `SELECT` geral para `anon`/`authenticated` em `bridge_tasks` nem publique eventos brutos dessa tabela para o navegador.
 
 1. Um administrador revisa e aplica `database/dashboard-read.sql` no projeto correto. A migração cria funções; não altera os estados, colunas, RLS, grants ou claim da fila. `task-identity.sql` e `task-progress.sql` continuam migrações separadas. Projeção JSON tolera suas colunas ausentes.
 2. No Supabase Auth, criar/convidar a conta de operador. Via Admin API segura ou SQL administrativo, definir **app_metadata** `bridge_dashboard: true`. Não usar `user_metadata`, editável pelo usuário. Conta sem essa autorização é recusada mesmo autenticada.
@@ -94,7 +94,7 @@ Arquitetura: HTML semântico, CSS próprio, módulos JavaScript nativos e gráfi
 
 Testes offline usam mocks de Auth, RPC e Broadcast, verificam estados, busca, identidade, seq bigint, reconexão, limites, segurança do build e estrutura responsiva. `tests/dashboard-browser.cjs` é smoke real Chromium em desktop/mobile, executado no CI separado com Playwright; não exige Supabase. `tests/test_dashboard_postgres.py` testa os RPCs com PostgreSQL descartável local no CI. Nunca apontar testes para produção. Ver instruções no cabeçalho de cada teste opcional.
 
-Validação adicional portátil, sem navegador e sem servidor PostgreSQL: `tests/dashboard-dom.cjs` executa as sete telas com LinkeDOM; `tests/dashboard-sql.cjs` executa as migrações e controles de acesso em PostgreSQL/WASM (PGlite) inteiramente em memória. Dependências ficam em diretório temporário, separadas do worker:
+Validação adicional portátil, sem navegador e sem servidor PostgreSQL: `tests/dashboard-dom.cjs` executa as quatro telas e a área avançada com LinkeDOM; `tests/dashboard-sql.cjs` executa as migrações e controles de acesso em PostgreSQL/WASM (PGlite) inteiramente em memória. Dependências ficam em diretório temporário, separadas do worker:
 
 ```sh
 npm install --prefix "$TMPDIR/bridge-dashboard-validation" --ignore-scripts --no-audit --no-fund --package-lock=false @electric-sql/pglite@0.3.14 linkedom@0.18.12
