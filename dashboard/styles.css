@@ -23,3 +23,20 @@
 .pager button{border:1px solid #29364f;background:#101827;color:#d8e0ef;border-radius:12px;padding:10px 14px}
 .pager button:disabled{opacity:.4;cursor:not-allowed}
 @media(max-width:760px){.build-status{padding:7px 9px;font-size:9px}.pager{justify-content:space-between}.pager button{padding:9px 11px}}
+
+.project-switch{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px!important;font-weight:800!important}
+.project-select-dialog{width:min(760px,94vw);max-height:86vh;overflow:auto}
+.project-select-dialog::backdrop{background:#02040aee;backdrop-filter:blur(14px)}
+.project-select-dialog>p{color:#94a2b8;line-height:1.55}
+.project-select-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:20px}
+.project-choice{display:flex;flex-direction:column;gap:7px;text-align:left;border:1px solid #2b3852;background:#101827;color:#fff;border-radius:17px;padding:18px;min-height:92px}
+.project-choice:hover,.project-choice:focus-visible{border-color:#6475c9;background:#151f37}
+.project-choice strong{font-size:14px}
+.project-choice small{color:#8492a8;line-height:1.4}
+.project-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.project-card p{color:#9aa7ba;line-height:1.55}
+.project-card>small{color:#75849b}
+.project-check{display:flex!important;grid-template-columns:none!important;align-items:center;gap:9px!important}
+.project-check input{width:auto}
+#project-select-error,#project-error{color:var(--bad);font-size:11px}
+@media(max-width:760px){.project-select-list,.project-grid{grid-template-columns:1fr}.project-switch{max-width:140px}}
