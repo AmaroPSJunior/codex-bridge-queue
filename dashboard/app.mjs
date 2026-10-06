@@ -1,4 +1,4 @@
-import {normalize,mergeTask,filterTasks,statistics,date,duration,seconds,statusLabel,escape as e} from './core.mjs';
+import {normalize,mergeTask,applyTaskChange,filterTasks,statistics,date,duration,seconds,statusLabel,escape as e} from './core.mjs';
 import {taskProgress,taskActivity,canDeleteTask,confirmTaskDeletion,removeTaskRows,queuePageArgs,queuePageResult,buildReleaseState} from './presentation.mjs';
 import {createData,createPublicData} from './data.mjs';
 
@@ -46,7 +46,20 @@ async function refreshBuildStatus(){try{const response=await fetch('https://api.
 async function openDetail(id){let r=state.rows.find(x=>x.id===id)||state.page.rows?.find(x=>x.id===id);if(state.mode==='live'&&source){try{r=normalize(await source.detail(id)||r);}catch{}}if(!r)return;const canDelete=canDeleteTask(r,state.mode),failure=r.status==='failed'?'<section class="failure-reason"><span>⚠ Motivo da falha</span><p>'+e(r.error_summary||r.error||'Motivo não informado')+'</p></section>':'';$('#detail-body').innerHTML='<span class="kicker">'+e(copy[r.status]||statusLabel(r.status))+'</span><h2 id="detail-title">'+e(label(r))+'</h2><div class="detail-progress"><progress aria-label="Progresso detalhado" max="100" value="'+pct(r)+'"></progress><strong>'+e(pctText(r))+'</strong></div><p class="detail-message">'+e(r.progress_message||'Sem mensagem nova.')+'</p>'+failure+'<div class="detail-facts"><div><span>Começou</span><strong>'+date(r.claimed_at||r.created_at)+'</strong></div><div><span>Tempo</span><strong>'+duration(seconds(r.claimed_at,r.completed_at||new Date().toISOString()))+'</strong></div></div><div class="detail-actions"><button id="delete-task" class="danger" '+(canDelete?'':'disabled')+'>'+((r.status==='running')?'Não é possível excluir em execução':'Excluir tarefa')+'</button></div>';const del=$('#delete-task');if(del&&canDelete)del.onclick=()=>deleteTask(r);$('#detail-dialog').showModal();}
 async function deleteTask(r){if(!source||!confirmTaskDeletion(confirm,r,state.mode,label))return;const button=$('#delete-task');if(button){button.disabled=true;button.textContent='Excluindo…';}try{const removed=await source.deleteTask(r.id);if(!removed)throw Error('Tarefa não encontrada.');state.rows=removeTaskRows(state.rows,r.id);if(state.page.rows)state.page.rows=removeTaskRows(state.page.rows,r.id);$('#detail-dialog').close();await refresh();}catch(err){if(button){button.disabled=false;button.textContent='Excluir tarefa';}alert(err?.message||'Não foi possível excluir a tarefa.');}}
 async function refresh(){if(!source)return;try{if(state.mode==='public')state.stats=await source.stats();else if(state.mode==='live'){const rows=await source.list({p_limit:50});state.rows=(rows||[]).map(normalize);state.stats=await source.stats();if(state.route==='tasks'){resetPage();await loadTaskPage(1);return;}}render();}catch{state.connection='offline';render();}}
-async function event(row){state.rows=mergeTask(state.rows,row);if(row?.id&&source&&state.mode==='live'){try{const fresh=await source.summary(row.id);if(fresh)state.rows=mergeTask(state.rows,normalize(fresh));}catch{}}render();}
+async function event(payload){
+ if(!payload?.id||!source||state.mode!=='live')return;
+ const operation=String(payload.operation||'').toUpperCase();
+ let fresh=null;
+ if(operation!=='DELETE'){try{fresh=await source.summary(payload.id);}catch{}}
+ state.rows=applyTaskChange(state.rows,payload,fresh?normalize(fresh):null);
+ if(state.page.rows)state.page.rows=applyTaskChange(state.page.rows,payload,fresh?normalize(fresh):null);
+ try{state.stats=await source.stats();}catch{}
+ if(state.route==='tasks'){
+  if(operation==='INSERT'){resetPage();await loadTaskPage(1);return;}
+  const target=Math.max(1,state.page.number||1);await loadTaskPage(target);return;
+ }
+ render();
+}
 function liveEvent(payload){if(!payload||typeof payload!=='object'||!payload.id)return;state.live.push(payload);if(state.live.length>500)state.live.splice(0,state.live.length-500);const row=state.rows.find(x=>x.id===payload.id);if(row&&typeof payload.percent==='number')row.progress_percent=payload.percent;if(state.route==='live'){render();requestAnimationFrame(()=>{const box=$('#live-terminal');if(box)box.scrollTop=box.scrollHeight;});}}
 async function boot(){render();let config={};try{config=await fetch('./public-config.json',{cache:'no-store'}).then(r=>r.ok?r.json():({}));}catch{}if(config.publicSummaryPath){state.rows=[];state.mode='public';source=createPublicData({config,onRefresh:refresh,onState:s=>{state.connection=s;render();}});state.stats=await source.stats();await source.subscribe();state.connection='live';render();return;}if(config.publishableKey){state.rows=[];try{source=await createData(config,{onEvent:event,onLive:liveEvent,onState:s=>{state.connection=s;render();},onRefresh:refresh,onAuthLost:()=>$('#login-dialog').showModal()});if(await source.restore()){state.mode='live';await refresh();await source.subscribe();state.connection='live';$('#notice').hidden=true;render();return;}state.mode='live';$('#login-dialog').showModal();}catch{$('#login-dialog').showModal();}}else{state.rows=[];state.stats=null;state.mode='offline';state.connection='offline';$('#notice').hidden=true;render();}}
 window.addEventListener('hashchange',()=>{state.route=location.hash.slice(1) in routes?location.hash.slice(1):'overview';render();if(state.route==='tasks'){resetPage();void loadTaskPage(1);}});
