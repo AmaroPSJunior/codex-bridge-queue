@@ -71,3 +71,10 @@ test('deterministic-only production gate rejects agent before any provider start
  assert.equal(r.code,1);assert.equal(r.executionMode,'agent');assert.equal(h.calls.length,0);
  assert.match(JSON.parse(r.stdout).error,/agent desativado/);
 });
+
+test('versioned production policy blocks agent without relying on launcher environment',async t=>{
+ const h=harness(t,'supabase-worker.js',{env:{AI_PROVIDER:'codex'}});
+ fs.writeFileSync(path.join(h.dir,'execution-policy.json'),JSON.stringify({version:1,deterministic_only:true}));
+ const r=await h.run("execute('must not reach provider',{id:'task',execution_mode:'agent'})");
+ assert.equal(r.code,1);assert.equal(h.calls.length,0);assert.match(JSON.parse(r.stdout).error,/agent desativado/);
+});

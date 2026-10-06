@@ -193,7 +193,7 @@ function execute(prompt,task={},progress){
     return run;
   }
 
-  if(process.env.CODEX_BRIDGE_DETERMINISTIC_ONLY==='1')return Promise.resolve({code:1,executionMode:'agent',stdout:JSON.stringify({status:'failed',answer:'',error:'Modo agent desativado; use command ou plan.',workspaceReleased:true}),stderr:''});
+  if(process.env.CODEX_BRIDGE_DETERMINISTIC_ONLY==='1'||(()=>{try{const p=JSON.parse(fs.readFileSync(path.join(DIR,'execution-policy.json'),'utf8'));return p?.version===1&&p.deterministic_only===true;}catch{return false;}})())return Promise.resolve({code:1,executionMode:'agent',stdout:JSON.stringify({status:'failed',answer:'',error:'Modo agent desativado; use command ou plan.',workspaceReleased:true}),stderr:''});
   const controlRun=workerControl.control(STATE,prompt,task);if(controlRun)return Promise.resolve(controlRun);
   let selected;
   try{
