@@ -56,3 +56,18 @@ test('dashboard build indicator follows current Pages release states',async()=>{
  assert.equal(buildReleaseState([{name:'Dashboard Pages',head_sha:'sha2',status:'completed',conclusion:'success'},{name:'Sync generated docs',head_sha:'sha2',status:'completed',conclusion:'cancelled'}]).status,'success');
  assert.equal(buildReleaseState([]).status,'hidden');
 });
+
+test('dashboard requires project selection before authenticated content',()=>{
+ const html=fs.readFileSync(path.join(root,'dashboard/index.html'),'utf8');
+ const app=fs.readFileSync(path.join(root,'dashboard/app.mjs'),'utf8');
+ const data=fs.readFileSync(path.join(root,'dashboard/data.mjs'),'utf8');
+ assert.ok(html.includes('id="project-select-dialog"'));
+ assert.ok(html.includes('id="project-select-list"'));
+ assert.ok(html.includes('id="project-switch"'));
+ assert.ok(app.includes('selectedProject:null'));
+ assert.ok(app.includes('showProjectChooser()'));
+ assert.ok(app.includes("addEventListener('cancel',ev=>ev.preventDefault())"));
+ assert.ok(app.includes('state.selectedProject.id'));
+ assert.ok(data.includes('bridge_dashboard_project_list'));
+ assert.ok(data.includes('bridge_dashboard_project_stats'));
+});
