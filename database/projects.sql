@@ -69,6 +69,7 @@ begin
    'github_url',p.github_url,
    'github_visibility',p.github_visibility,
    'github_status',p.github_status,
+   'github_branch',p.github_branch,
    'github_error',bridge_dashboard_private.bridge_dashboard_safe(p.github_error,240),
    'created_at',p.created_at,
    'updated_at',p.updated_at
