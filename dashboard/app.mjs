@@ -1,6 +1,5 @@
 import {normalize,mergeTask,filterTasks,statistics,date,duration,seconds,statusLabel,escape as e} from './core.mjs';
 import {taskProgress,taskActivity} from './presentation.mjs';
-import {demoTasks} from './demo.mjs';
 import {createData,createPublicData} from './data.mjs';
 
 const $=s=>document.querySelector(s), main=$('#main'), nav=$('#nav');
