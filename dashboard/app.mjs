@@ -7,7 +7,7 @@ const state={rows:[],stats:null,mode:'offline',route:'overview',search:'',status
 let source=null;
 const routes={overview:['Agora','⌁'],live:['Ao vivo','●'],tasks:['Fila','◫'],history:['Prontas','✓'],settings:['Sistema','⚙']};
 const copy={queued:'Na fila',running:'Fazendo agora',succeeded:'Pronta',failed:'Precisa de atenção',cancelled:'Cancelada'};
-const label=r=>{const name=String(r?.task_name||r?.title||'Tarefa sem título').replace(/^Tarefa\s+\d+\s*[—-]\s*/i,'').trim()||'Tarefa sem título';const number=String(r?.task_number||'').trim();return number?`${number} — ${name}`:(r?.label||name);};
+const label=r=>{const clean=v=>String(v||'').replace(/^Tarefa\s+(?:\d+\s*[—-]\s*)?/i,'').trim();const name=clean(r?.task_name||r?.title)||'Sem título';const number=String(r?.task_number||'').trim();if(number)return `${number} — ${name}`;return clean(r?.label)||name;};
 const stats=()=>state.stats||statistics(state.rows);
 const current=()=>state.rows.find(r=>r.status==='running');
 const queued=()=>state.rows.filter(r=>r.status==='queued').sort((a,b)=>(a.created_at||'').localeCompare(b.created_at||''));
