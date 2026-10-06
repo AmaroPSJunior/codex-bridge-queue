@@ -1,11 +1,19 @@
 name: Dashboard Pages
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - dashboard/**
+      - scripts/dashboard-build.cjs
+      - task-display.js
+      - task-progress.js
+      - .github/workflows/dashboard-pages.yml
 permissions:
   contents: read
 concurrency:
   group: dashboard-pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   build:
     if: github.ref == 'refs/heads/main'

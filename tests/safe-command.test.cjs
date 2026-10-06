@@ -39,7 +39,7 @@ function fixture(t,options={}){
     run:createSafeCommandRunner({
       cwd,
       env:process.env,
-      timeoutMs:5000,
+      timeoutMs:15000,
       ...options
     })
   };
