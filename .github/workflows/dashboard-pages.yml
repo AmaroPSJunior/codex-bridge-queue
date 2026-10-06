@@ -27,6 +27,14 @@ jobs:
         with:
           python-version: '3.12'
       - run: npm test
+      - name: Install Playwright Chromium for visual smoke
+        run: |
+          npm install --prefix .playwright-ci --no-save playwright
+          node .playwright-ci/node_modules/playwright/cli.js install --with-deps chromium
+      - name: Run Playwright visual smoke
+        env:
+          NODE_PATH: .playwright-ci/node_modules
+        run: node tests/dashboard-browser.cjs
       - run: npm run dashboard:build
         env:
           PUBLIC_SUPABASE_URL: ${{ vars.PUBLIC_SUPABASE_URL }}
