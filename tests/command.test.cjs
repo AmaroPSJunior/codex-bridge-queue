@@ -46,7 +46,7 @@ test('real deterministic read executes only inside temporary workspace',async t=
  const m=mock(t);const r=await executeCommand({command:'pwd'},{cwd:m.cwd,env:{}});assert.equal(r.code,0);assert.equal(r.commandResult.stdout.trim(),require('../task-progress').sanitizer({})(m.cwd));
 });
 test('client creates explicit command rows and refuses GitHub or text fallback',()=>{
- const {payload}=require('../scripts/tasks.cjs');const r=payload({execution_mode:'command',command_payload:{command:'pwd'}},'supabase');assert.equal(r.execution_mode,'command');assert.equal(r.command_payload.command,'pwd');assert.throws(()=>payload({execution_mode:'command',command_payload:{command:'pwd'}},'github'));assert.throws(()=>payload({instruction:'pwd',command_payload:{command:'pwd'}},'supabase'));
+ const {payload}=require('../scripts/tasks.cjs');const r=payload({project_id:'11111111-1111-4111-8111-111111111111',execution_mode:'command',command_payload:{command:'pwd'}},'supabase');assert.equal(r.execution_mode,'command');assert.equal(r.command_payload.command,'pwd');assert.throws(()=>payload({execution_mode:'command',command_payload:{command:'pwd'}},'github'));assert.throws(()=>payload({project_id:'11111111-1111-4111-8111-111111111111',instruction:'pwd',command_payload:{command:'pwd'}},'supabase'));
 });
 test('worker command bypasses provider and lifecycle, persists mode/result only',async t=>{
  let invoked=0,released=0,body;
