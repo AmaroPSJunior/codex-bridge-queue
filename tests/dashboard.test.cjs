@@ -16,3 +16,43 @@ test('dashboard static structure includes accessibility, mobile, CSP, and execut
 test('dashboard build emits only explicit static assets and ignores inherited secrets',()=>{const temp=fs.mkdtempSync(path.join(os.tmpdir(),'bridge-dashboard-'));try{fs.mkdirSync(path.join(temp,'scripts'));fs.cpSync(path.join(root,'dashboard'),path.join(temp,'dashboard'),{recursive:true,filter:p=>!p.includes('/dist')});fs.copyFileSync(path.join(root,'scripts/dashboard-build.cjs'),path.join(temp,'scripts/dashboard-build.cjs'));for(const f of ['task-display.js','task-progress.js'])fs.copyFileSync(path.join(root,f),path.join(temp,f));fs.writeFileSync(path.join(temp,'dashboard/private.key'),'fixture-do-not-copy');const env={PATH:process.env.PATH,CODEX_SUPABASE_SERVICE_ROLE_KEY:'fixture-do-not-copy'};cp.execFileSync(process.execPath,['scripts/dashboard-build.cjs'],{cwd:temp,env});const names=fs.readdirSync(path.join(temp,'dashboard/dist'));assert.equal(names.length,12);assert.ok(!names.includes('private.key'));for(const f of names)assert.ok(!fs.readFileSync(path.join(temp,'dashboard/dist',f),'utf8').includes('fixture-do-not-copy'));const bad=cp.spawnSync(process.execPath,['scripts/dashboard-build.cjs'],{cwd:temp,env:{...env,PUBLIC_SUPABASE_PUBLISHABLE_KEY:'sb_secret_fixture'}});assert.notEqual(bad.status,0);const summary={counts:{queued:0,running:1,succeeded:2,failed:0,cancelled:0},updated_at:'2026-10-04T12:00:00Z'};const summaryFile=path.join(temp,'dashboard/public-summary.json');fs.writeFileSync(summaryFile,JSON.stringify({...summary,secret:'fixture-do-not-copy'}));assert.notEqual(cp.spawnSync(process.execPath,['scripts/dashboard-build.cjs'],{cwd:temp,env:{...env,PUBLIC_DASHBOARD_MODE:'public'}}).status,0);assert.ok(!fs.existsSync(path.join(temp,'dashboard/dist/public-summary.json')));fs.writeFileSync(summaryFile,JSON.stringify(summary));cp.execFileSync(process.execPath,['scripts/dashboard-build.cjs'],{cwd:temp,env:{...env,PUBLIC_DASHBOARD_MODE:'public'}});assert.deepEqual(JSON.parse(fs.readFileSync(path.join(temp,'dashboard/dist/public-summary.json'))),summary);fs.writeFileSync(path.join(temp,'dashboard/dist/private.key'),'fixture-do-not-copy');assert.notEqual(cp.spawnSync(process.execPath,['scripts/dashboard-build.cjs'],{cwd:temp,env}).status,0);assert.ok(fs.existsSync(path.join(temp,'dashboard/dist/private.key')));}finally{fs.rmSync(temp,{recursive:true,force:true});}});
 
 test('live telemetry SQL is ephemeral service-role-only and sanitized',()=>{const sql=fs.readFileSync(path.join(root,'database/dashboard-live.sql'),'utf8');assert.ok(sql.includes("realtime.send(clean,'live_activity','bridge-dashboard',true)"));assert.ok(sql.includes('bridge_dashboard_safe'));assert.ok(sql.includes('grant execute on function public.bridge_dashboard_live_emit(uuid,jsonb) to service_role'));assert.ok(sql.includes('revoke all on function public.bridge_dashboard_live_emit(uuid,jsonb) from public,anon,authenticated'));});
+
+test('dashboard delete flow confirms, cancels, removes and blocks running tasks',async()=>{
+ const p=await import('../dashboard/presentation.mjs');
+ const label=t=>t.task_number+' — '+t.title;
+ const failed={id:'a',task_number:7,title:'Falhou',status:'failed'};
+ const running={id:'b',task_number:8,title:'Rodando',status:'running'};
+ let prompts=[];
+ assert.equal(p.canDeleteTask(failed,'live'),true);
+ assert.equal(p.canDeleteTask(running,'live'),false);
+ assert.equal(p.confirmTaskDeletion(msg=>{prompts.push(msg);return false;},failed,'live',label),false);
+ assert.equal(prompts.length,1);
+ assert.match(prompts[0],/7 — Falhou/);
+ prompts=[];
+ assert.equal(p.confirmTaskDeletion(msg=>{prompts.push(msg);return true;},failed,'live',label),true);
+ assert.equal(prompts.length,1);
+ prompts=[];
+ assert.equal(p.confirmTaskDeletion(msg=>{prompts.push(msg);return true;},running,'live',label),false);
+ assert.equal(prompts.length,0);
+ assert.deepEqual(p.removeTaskRows([failed,running],'a').map(x=>x.id),['b']);
+});
+
+test('dashboard queue pagination uses cursor, filter, search and lookahead row',async()=>{
+ const p=await import('../dashboard/presentation.mjs');
+ assert.deepEqual(p.queuePageArgs(),{p_limit:13,p_status:null,p_query:null,p_before_created:null,p_before_id:null});
+ assert.deepEqual(p.queuePageArgs({status:'failed',search:'teste',cursor:{created_at:'2026-10-06T00:00:00Z',id:'abc'},limit:12}),{p_limit:13,p_status:'failed',p_query:'teste',p_before_created:'2026-10-06T00:00:00Z',p_before_id:'abc'});
+ const rows=Array.from({length:13},(_,i)=>({id:String(i),created_at:'2026-10-06T00:00:'+String(i).padStart(2,'0')+'Z'}));
+ const page=p.queuePageResult(rows,12);
+ assert.equal(page.rows.length,12);assert.equal(page.hasNext,true);assert.equal(page.nextCursor.id,'11');
+ const last=p.queuePageResult(rows.slice(0,3),12);assert.equal(last.hasNext,false);assert.equal(last.rows.length,3);
+});
+
+test('dashboard build indicator follows current Pages release states',async()=>{
+ const {buildReleaseState}=await import('../dashboard/presentation.mjs');
+ const base=[{name:'Dashboard Pages',head_sha:'sha1',status:'in_progress',conclusion:null},{name:'Bridge tests',head_sha:'sha1',status:'completed',conclusion:'success'}];
+ assert.equal(buildReleaseState(base).status,'running');
+ assert.equal(buildReleaseState(base.map(r=>({...r,status:'completed',conclusion:'success'}))).status,'success');
+ assert.equal(buildReleaseState([{name:'Dashboard Pages',head_sha:'sha1',status:'completed',conclusion:'success'},{name:'Bridge tests',head_sha:'sha1',status:'completed',conclusion:'failure'}]).status,'failed');
+ assert.equal(buildReleaseState([{name:'Dashboard Pages',head_sha:'sha2',status:'completed',conclusion:'success'},{name:'Sync generated docs',head_sha:'sha2',status:'completed',conclusion:'cancelled'}]).status,'success');
+ assert.equal(buildReleaseState([]).status,'hidden');
+});
