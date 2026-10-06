@@ -7,7 +7,7 @@ export function validateConfig(config){
 export async function createData(config,{onEvent,onLive,onState,onRefresh,onAuthLost,load=()=>import(SDK)}={}){
  validateConfig(config);const {createClient}=await load();
  const client=createClient(config.supabaseUrl,config.publishableKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storageKey:'codex-bridge-dashboard-auth'},global:{fetch:(url,opts)=>fetch(url,{...opts,signal:AbortSignal.timeout(15000)})}});
- let channel,gate,pollTimer,closed=false,generation=0;const abort=async()=>{generation++;gate?.stop();clearInterval(pollTimer);pollTimer=null;const previous=channel;channel=null;if(previous)await client.removeChannel(previous);};
+ let channel,gate,pollTimer,revisionTimer,closed=false,generation=0,lastRevision=null,revisionBusy=false;const abort=async()=>{generation++;gate?.stop();clearInterval(pollTimer);clearInterval(revisionTimer);pollTimer=null;revisionTimer=null;const previous=channel;channel=null;if(previous)await client.removeChannel(previous);};
  const auth=client.auth.onAuthStateChange((event,session)=>{
   // Never call asynchronous Auth methods while inside the SDK auth lock.
   if(event==='SIGNED_OUT')setTimeout(()=>{if(!closed){void abort().catch(()=>{});onAuthLost?.();}},0);
@@ -28,10 +28,12 @@ export async function createData(config,{onEvent,onLive,onState,onRefresh,onAuth
    return true;
   },
   async login(email,password){const {error}=await client.auth.signInWithPassword({email,password});if(error)throw Error('Login não autorizado. Confira sua conta.');},
-  list:args=>rpc('bridge_dashboard_list',args), summary:id=>rpc('bridge_dashboard_summary',{p_id:id}), detail:id=>rpc('bridge_dashboard_detail',{p_id:id}), deleteTask:id=>rpc('bridge_dashboard_delete',{p_id:id}), stats:()=>rpc('bridge_dashboard_stats'),
+  list:args=>rpc('bridge_dashboard_list',args), summary:id=>rpc('bridge_dashboard_summary',{p_id:id}), detail:id=>rpc('bridge_dashboard_detail',{p_id:id}), deleteTask:id=>rpc('bridge_dashboard_delete',{p_id:id}), stats:()=>rpc('bridge_dashboard_stats'), revision:()=>rpc('bridge_dashboard_revision'),
   async subscribe(){await abort();closed=false;const attempt=generation;gate=new Connection({refresh:onRefresh,onState});gate.set('connecting');try{const {data:{session}}=await client.auth.getSession();if(!session?.access_token)throw Error('Sessão ausente');await client.realtime.setAuth(session.access_token);}catch{if(attempt===generation)gate.set('offline');return;}if(closed||attempt!==generation)return;
-   let subscribed=false;channel=client.channel('bridge-dashboard',{config:{private:true}}).on('broadcast',{event:'task_changed'},({payload})=>{if(!closed&&attempt===generation)onEvent?.(payload);}).on('broadcast',{event:'live_activity'},({payload})=>{if(!closed&&attempt===generation)onLive?.(payload);}).subscribe(status=>{if(closed||attempt!==generation)return;const live=status==='SUBSCRIBED';gate.set(live?'live':status==='CLOSED'?'offline':'reconnecting');if(live&&!subscribed){subscribed=true;void Promise.resolve(onRefresh?.()).catch(()=>{});}else if(!live)subscribed=false;});
-   clearInterval(pollTimer);pollTimer=setInterval(()=>{if(!closed&&attempt===generation)void Promise.resolve(onRefresh?.()).catch(()=>{});},15000);
+   try{lastRevision=Number(await rpc('bridge_dashboard_revision'))||0;}catch{lastRevision=null;}
+   let subscribed=false;channel=client.channel('bridge-dashboard',{config:{private:true}}).on('broadcast',{event:'task_changed'},({payload})=>{if(closed||attempt!==generation)return;if(Number.isFinite(Number(payload?.revision)))lastRevision=Math.max(lastRevision??0,Number(payload.revision));onEvent?.(payload);}).on('broadcast',{event:'live_activity'},({payload})=>{if(!closed&&attempt===generation)onLive?.(payload);}).subscribe(status=>{if(closed||attempt!==generation)return;const live=status==='SUBSCRIBED';gate.set(live?'live':status==='CLOSED'?'offline':'reconnecting');if(live&&!subscribed){subscribed=true;void Promise.resolve(onRefresh?.()).catch(()=>{});}else if(!live)subscribed=false;});
+   clearInterval(revisionTimer);revisionTimer=setInterval(async()=>{if(closed||attempt!==generation||revisionBusy)return;revisionBusy=true;try{const rev=Number(await rpc('bridge_dashboard_revision'));if(Number.isFinite(rev)){if(lastRevision!==null&&rev!==lastRevision)await Promise.resolve(onRefresh?.());lastRevision=rev;}}catch{}finally{revisionBusy=false;}},2000);
+   clearInterval(pollTimer);pollTimer=setInterval(()=>{if(!closed&&attempt===generation)void Promise.resolve(onRefresh?.()).catch(()=>{});},30000);
   },
   async logout(){
    closed=true;
