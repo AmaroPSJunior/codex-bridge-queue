@@ -7,6 +7,7 @@ const {harness}=require('./harness.cjs');
 
 test('client cria plan somente via Supabase',()=>{
  const input={
+  project_id:'11111111-1111-4111-8111-111111111111',
   execution_mode:'plan',
   plan_payload:{
    version:1,
