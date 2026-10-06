@@ -108,6 +108,7 @@ async function executePlan(payload,{cwd,env=process.env,signal,progress,runSafeC
     for(let i=state.next_index;i<spec.steps.length;i++){
       if(signal?.aborted)throw fail('cancelled','Plano cancelado');
       const step=spec.steps[i];
+      await progress?.planStep?.({index:i,total:spec.steps.length,type:step.type,command:step.command,path:step.path});
       if(step.type==='write_file'){
         snapshot(cwd,step.path,state.backups);state.next_index=i;persist();
         const file=relativeFile(cwd,step.path);fs.writeFileSync(file,step.content,{flag:'w',mode:0o600});

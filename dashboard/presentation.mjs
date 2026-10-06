@@ -1,4 +1,4 @@
-export const NAV={overview:['Visão Geral','◫'],tasks:['Tarefas','☷'],history:['Histórico','◷'],settings:['Sistema','⚙']};
+export const NAV={overview:['Visão Geral','◫'],live:['Ao vivo','●'],tasks:['Tarefas','☷'],history:['Histórico','◷'],settings:['Sistema','⚙']};
 export const STATUS_COPY={queued:['◷','Aguardando'],running:['▶','Em execução'],succeeded:['✓','Concluída'],failed:['!','Falhou — ver motivo'],cancelled:['−','Cancelada']};
 export function progressValue(task){if(task.status==='succeeded')return 100;const n=task.progress_percent;return typeof n==='number'&&Number.isFinite(n)&&n>=0&&n<=100?n:null;}
 export function providerName(id){return ({codex:'Codex',groq:'Groq',antigravity:'Antigravity',claude:'Claude',local:'IA local'})[id]||'Agente não informado';}

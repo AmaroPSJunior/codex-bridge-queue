@@ -3,7 +3,7 @@ const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypt
 const {StringDecoder}=require('node:string_decoder');
 const {performance}=require('node:perf_hooks');
 const MAX_LINES=500,MAX_BYTES=512*1024,INTERVAL=60000,FLUSH_LINES=30;
-const PROVIDERS={local:'Qwen',codex:'Codex',groq:'Groq',antigravity:'Antigravity',claude:'Claude'};
+const PROVIDERS={termux:'Termux',local:'Qwen',codex:'Codex',groq:'Groq',antigravity:'Antigravity',claude:'Claude'};
 const STAGES={
  commandUnknown:{percent:65,text:'Comando terminou; verificando resultado'},
  commandDone:{percent:70,text:'Comando concluído'},
@@ -40,9 +40,9 @@ function sanitizer(env={}) {
    .replace(/[\x00-\x08\x0b-\x1f\x7f]/g,'');
  };
 }
-function createProgress({write=async()=>{},append=()=>{},env={},initialSeq=0,provider='codex',includePercent=false,now=()=>performance.now(),timer=setTimeout,cancel=clearTimeout,onError=()=>{}}={}) {
+function createProgress({write=async()=>{},append=()=>{},env={},initialSeq=0,provider='termux',includePercent=false,onLive=()=>{},now=()=>performance.now(),timer=setTimeout,cancel=clearTimeout,onError=()=>{}}={}) {
  const clean=sanitizer(env),lines=[],streams=new Map();
- let pending=0,lastSuccess=now(),retryAt=0,handle,inflight,closed=false,stage='running',seq,attempt,suppressBatch=false,currentProvider=provider,maxPercent=STAGES.running.percent;
+ let pending=0,lastSuccess=now(),retryAt=0,handle,inflight,closed=false,stage='running',seq,attempt,suppressBatch=false,currentProvider=provider,maxPercent=STAGES.running.percent,currentMessage='';
  try {seq=BigInt(initialSeq||0);if(seq<0n)seq=0n;}catch{seq=0n;}
  const text=()=>lines.join('\n');
  function clear(){if(handle!==undefined){cancel(handle);handle=undefined;}}
@@ -64,6 +64,7 @@ function createProgress({write=async()=>{},append=()=>{},env={},initialSeq=0,pro
   lines.push(safe);
   while(lines.length>MAX_LINES||Buffer.byteLength(JSON.stringify(text()),'utf8')>MAX_BYTES)lines.shift();
   pending++;
+  try{onLive({kind:'output',message:safe,stage,percent:maxPercent,at:new Date().toISOString()});}catch{onError('live_event_failed');}
   if(!suppressBatch&&pending>=FLUSH_LINES&&now()>=retryAt)void flush('lines');else arm();
  }
  function feed(chunk,channel='output'){
@@ -97,7 +98,7 @@ function createProgress({write=async()=>{},append=()=>{},env={},initialSeq=0,pro
    const count=pending;
    maxPercent=Math.max(maxPercent,STAGES[stage].percent);
    attempt={count,payload:{
-     progress_message:stageMessage(stage,currentProvider,maxPercent),
+     progress_message:currentMessage||stageMessage(stage,currentProvider,maxPercent),
      ...(includePercent?{progress_percent:maxPercent}:{}),
      recent_output:text(),
      progress_seq:String(seq+1n),
@@ -129,13 +130,23 @@ function createProgress({write=async()=>{},append=()=>{},env={},initialSeq=0,pro
   try{append('[command exit: '+(Number.isInteger(code)?code:'unknown')+']\n');}catch{onError('local_log_failed');}
   await flushRemaining('command_end');
  }
- async function checkpoint(nextStage){stage=STAGES[nextStage]?nextStage:stage;await flushRemaining('final');}
+ async function planStep({index,total,type,command,path:targetPath}={}){
+  const count=Number.isSafeInteger(total)&&total>0?total:1;
+  const current=Number.isSafeInteger(index)&&index>=0?index:0;
+  stage=type==='run_command'?'command':type==='write_file'||type==='delete_file'?'editing':'running';
+  maxPercent=Math.max(maxPercent,Math.min(94,10+Math.round((current/count)*84)));
+  const action=type==='run_command'?'Executando '+String(command||'comando'):type==='write_file'?'Atualizando '+String(targetPath||'arquivo'):type==='delete_file'?'Removendo '+String(targetPath||'arquivo'):'Executando etapa';
+  currentMessage='Etapa '+Math.min(current+1,count)+' de '+count+': '+action;
+  try{onLive({kind:'stage',message:currentMessage,stage,step_index:current,step_total:count,percent:maxPercent,at:new Date().toISOString()});}catch{onError('live_event_failed');}
+  line(currentMessage);await flushRemaining('final');
+ }
+ async function checkpoint(nextStage){stage=STAGES[nextStage]?nextStage:stage;currentMessage='';await flushRemaining('final');}
  async function close(nextStage){
   stage=STAGES[nextStage]?nextStage:stage;suppressBatch=true;drain();closed=true;suppressBatch=false;clear();
   await flushRemaining('final');clear();
  }
  return {
-  feed,line,flush,checkpoint,commandComplete,close,
+  feed,line,flush,checkpoint,planStep,commandComplete,close,
   setStage:s=>{if(STAGES[s])stage=s;},
   setProvider:p=>{if(typeof p==='string'&&p)currentProvider=p;},
   snapshot:()=>({lines:[...lines],pending,lastSuccess,seq:String(seq),closed,stage,provider:currentProvider,percent:maxPercent})

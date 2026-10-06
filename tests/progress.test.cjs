@@ -48,8 +48,9 @@ for(const outcome of ['completed','failed'])test('Worker awaits progress before 
  await h.run("finish({id:'1'},runResult,pr)");assert.deepEqual(events,outcome==='completed'?['flush succeeded','succeeded']:['flush failed','failed']);
 });
 test('Worker progress PATCH uses exact sequence CAS and server timestamp with no lifecycle fields',async t=>{
- let call;const h=harness(t,'supabase-worker.js',{fetch:async(u,o)=>{call={u,o};return {ok:true,text:async()=>JSON.stringify([{id:'1'}])};}});
+ const calls=[];const h=harness(t,'supabase-worker.js',{fetch:async(u,o)=>{calls.push({u,o});return {ok:true,text:async()=>u.includes('bridge_dashboard_live_emit')?'true':JSON.stringify([{id:'1'}])};}});
  h.run("activeProgress=progressFor({id:'1',progress_seq:4,progress_message:null,recent_output:null,last_progress_at:null,last_flush_reason:null,last_flush_line_count:null});activeProgress.line('hello')");await h.run("activeProgress.close('succeeded')");
+ const call=calls.find(x=>x.u.includes('bridge_tasks?'));assert.ok(call);assert.ok(calls.some(x=>x.u.includes('bridge_dashboard_live_emit')));
  assert.match(call.u,/status=eq.running/);assert.match(call.u,/progress_seq=eq.4/);assert.ok(call.o.signal);const body=JSON.parse(call.o.body);assert.equal(body.progress_seq,'5');assert.equal(body.last_progress_at,undefined);assert.equal(body.last_flush_reason,'final');assert.equal(body.last_flush_line_count,1);assert.equal(body.status,undefined);assert.equal(body.result,undefined);
 });
 test('Worker legacy schema records local output with no progress network requests',async t=>{const h=harness(t,'supabase-worker.js');h.run("activeProgress=progressFor({id:'legacy'});activeProgress.line('hello')");await h.run("activeProgress.close('succeeded')");assert.match(h.logs.join('\n'),/schema_pending/);assert.equal(fs.readdirSync(path.join(h.dir,'supabase-state/progress')).length,1);});

@@ -46,17 +46,32 @@ async function claim(task){
   return rows?.[0]||null;
 }
 let activeProgress;
+function liveBroadcast(task){
+  let buffer=[],timer=null,inflight=Promise.resolve(),seq=0,closed=false;
+  const flush=()=>{
+    if(!buffer.length)return inflight;
+    const events=buffer.splice(0,20);clearTimeout(timer);timer=null;
+    inflight=inflight.then(()=>request('rpc/bridge_dashboard_live_emit',{method:'POST',signal:AbortSignal.timeout(5000),body:JSON.stringify({p_task_id:task.id,p_events:events})})).catch(()=>log('live_publish_failed'));
+    if(buffer.length&&!closed){timer=setTimeout(flush,250);timer.unref?.();}
+    return inflight;
+  };
+  const push=event=>{if(closed||!event||typeof event!=='object')return;buffer.push({...event,event_seq:String(++seq)});if(buffer.length>=10)void flush();else if(!timer){timer=setTimeout(flush,250);timer.unref?.();}};
+  const close=async()=>{closed=true;clearTimeout(timer);timer=null;while(buffer.length)await flush();await inflight;};
+  return {push,close};
+}
 function progressFor(task){
   let file,fileClosed=false,localWarned=false;
   try{file=localLog(STATE,task.id);}catch{log('progress_local_log_unavailable');}
   const supported=['progress_message','recent_output','last_progress_at','progress_seq','last_flush_reason','last_flush_line_count'].every(k=>Object.prototype.hasOwnProperty.call(task,k));
   const supportsPercent=Object.prototype.hasOwnProperty.call(task,'progress_percent');
   if(!supported)log('progress_local_only',{reason:'schema_pending'});
+  const live=liveBroadcast(task);
   const progress=createProgress({
     env:process.env,
     initialSeq:task.progress_seq,
-    provider:task.requested_provider||task.ai_provider||'codex',
+    provider:['plan','command'].includes(task.execution_mode)?'termux':task.requested_provider||task.ai_provider||'codex',
     includePercent:supportsPercent,
+    onLive:event=>live.push(event),
     append:s=>{if(file&&!fileClosed)file.append(s);},
     onError:event=>{if(event==='local_log_failed'){if(localWarned)return;localWarned=true;}log(event);},write:async body=>{
       if(!supported)return {localOnly:true};
@@ -78,7 +93,7 @@ function progressFor(task){
 
     }});
   const close=progress.close;
-  progress.close=async stage=>{try{await close(stage);}finally{if(!fileClosed){fileClosed=true;try{file?.close();}catch{log('progress_local_log_close_failed');}}}};
+  progress.close=async stage=>{try{await close(stage);await live.close();}finally{if(!fileClosed){fileClosed=true;try{file?.close();}catch{log('progress_local_log_close_failed');}}}};
   return progress;
 }
 function executionTimeoutMs(){
