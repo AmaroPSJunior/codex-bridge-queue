@@ -6,7 +6,7 @@ export function validateConfig(config){
 }
 export async function createData(config,{onEvent,onLive,onState,onRefresh,onAuthLost,load=()=>import(SDK)}={}){
  validateConfig(config);const {createClient}=await load();
- const client=createClient(config.supabaseUrl,config.publishableKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false},global:{fetch:(url,opts)=>fetch(url,{...opts,signal:AbortSignal.timeout(15000)})}});
+ const client=createClient(config.supabaseUrl,config.publishableKey,{auth:{persistSession:true,autoRefreshToken:true,detectSessionInUrl:false,storageKey:'codex-bridge-dashboard-auth'},global:{fetch:(url,opts)=>fetch(url,{...opts,signal:AbortSignal.timeout(15000)})}});
  let channel,gate,pollTimer,closed=false,generation=0;const abort=async()=>{generation++;gate?.stop();clearInterval(pollTimer);pollTimer=null;const previous=channel;channel=null;if(previous)await client.removeChannel(previous);};
  const auth=client.auth.onAuthStateChange((event,session)=>{
   // Never call asynchronous Auth methods while inside the SDK auth lock.
@@ -16,11 +16,16 @@ export async function createData(config,{onEvent,onLive,onState,onRefresh,onAuth
  async function rpc(name,args={}){const {data,error}=await client.rpc(name,args);if(error)throw Error('Não foi possível ler o painel. Confira conexão e autorização.');return data;}
  return {
   async restore(){
-   const saved=await client.auth.getSession();if(saved.error)throw Error('Não foi possível restaurar a sessão. Tente reconectar.');
-   if(!saved.data?.session)return false;
-   const verified=await client.auth.getUser();
-   if(verified.error){if([401,403].includes(verified.error.status))return false;throw Error('Não foi possível verificar a sessão. Ela foi preservada; tente reconectar.');}
-   return !!verified.data?.user;
+   const saved=await client.auth.getSession();
+   if(saved.error)throw Error('Não foi possível restaurar a sessão. Tente reconectar.');
+   const session=saved.data?.session;
+   if(!session?.access_token||!session?.refresh_token)return false;
+   const expiresAt=Number(session.expires_at||0)*1000;
+   if(expiresAt&&expiresAt-Date.now()<60000){
+    const refreshed=await client.auth.refreshSession();
+    if(refreshed.error||!refreshed.data?.session)return false;
+   }
+   return true;
   },
   async login(email,password){const {error}=await client.auth.signInWithPassword({email,password});if(error)throw Error('Login não autorizado. Confira sua conta.');},
   list:args=>rpc('bridge_dashboard_list',args), summary:id=>rpc('bridge_dashboard_summary',{p_id:id}), detail:id=>rpc('bridge_dashboard_detail',{p_id:id}), deleteTask:id=>rpc('bridge_dashboard_delete',{p_id:id}), stats:()=>rpc('bridge_dashboard_stats'),
