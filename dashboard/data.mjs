@@ -23,7 +23,7 @@ export async function createData(config,{onEvent,onLive,onState,onRefresh,onAuth
    return !!verified.data?.user;
   },
   async login(email,password){const {error}=await client.auth.signInWithPassword({email,password});if(error)throw Error('Login não autorizado. Confira sua conta.');},
-  list:args=>rpc('bridge_dashboard_list',args), summary:id=>rpc('bridge_dashboard_summary',{p_id:id}), detail:id=>rpc('bridge_dashboard_detail',{p_id:id}),stats:()=>rpc('bridge_dashboard_stats'),
+  list:args=>rpc('bridge_dashboard_list',args), summary:id=>rpc('bridge_dashboard_summary',{p_id:id}), detail:id=>rpc('bridge_dashboard_detail',{p_id:id}), deleteTask:id=>rpc('bridge_dashboard_delete',{p_id:id}), stats:()=>rpc('bridge_dashboard_stats'),
   async subscribe(){await abort();closed=false;const attempt=generation;gate=new Connection({refresh:onRefresh,onState});gate.set('connecting');try{const {data:{session}}=await client.auth.getSession();if(!session?.access_token)throw Error('Sessão ausente');await client.realtime.setAuth(session.access_token);}catch{if(attempt===generation)gate.set('offline');return;}if(closed||attempt!==generation)return;
    channel=client.channel('bridge-dashboard',{config:{private:true}}).on('broadcast',{event:'task_changed'},({payload})=>{if(!closed&&attempt===generation)onEvent?.(payload);}).on('broadcast',{event:'live_activity'},({payload})=>{if(!closed&&attempt===generation)onLive?.(payload);}).subscribe(status=>{if(!closed&&attempt===generation)gate.set(status==='SUBSCRIBED'?'live':status==='CLOSED'?'offline':'reconnecting');});
    clearInterval(pollTimer);pollTimer=setInterval(()=>{if(!closed&&attempt===generation)void Promise.resolve(onRefresh?.()).catch(()=>{});},15000);
@@ -55,7 +55,7 @@ export function createPublicData({config={},onRefresh=()=>{},onState=()=>{},requ
  let timer,channel,client,closed=false;
  const snapshot=async()=>{const response=await request(config.publicSummaryPath||'./public-summary.json',{cache:'no-store',credentials:'omit',redirect:'error',signal:AbortSignal.timeout(10000)});if(!response.ok)throw Error('Resumo público indisponível');const reader=response.body.getReader();let size=0,text='';const decoder=new TextDecoder();try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>65536)throw Error('Resumo público excessivo');text+=decoder.decode(value,{stream:true});}text+=decoder.decode();}finally{await reader.cancel();reader.releaseLock();}return publicSummary(JSON.parse(text));};
  const liveStats=async()=>{if(!client)return snapshot();const {data,error}=await client.rpc('bridge_dashboard_public_stats');if(error)throw Error('Resumo público indisponível');return publicSummary(data);};
- return {list:async()=>[],detail:async()=>null,summary:async()=>null,
+ return {list:async()=>[],detail:async()=>null,summary:async()=>null,deleteTask:async()=>false,
   stats:liveStats,
   async subscribe(){
    clearInterval(timer);closed=false;
