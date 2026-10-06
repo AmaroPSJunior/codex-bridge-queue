@@ -26,20 +26,21 @@ def workers():
     found = []
     for proc in Path('/proc').glob('[0-9]*'):
         try:
+            # Identify candidate workers before inspecting /proc/<pid>/exe.
+            # Some CI/container procfs mounts deny exe for unrelated same-uid
+            # processes; they must not make singleton discovery unusable.
             args = (proc / 'cmdline').read_bytes().split(b'\0')
-            if Path(os.readlink(proc / 'exe')).name != 'node':
-                continue
             cwd = Path(os.readlink(proc / 'cwd'))
-            if any(a and (cwd / os.fsdecode(a)).resolve() == WORKER for a in args[1:]):
-                found.append(int(proc.name))
-        except (FileNotFoundError, ProcessLookupError):
-            continue
-        except PermissionError:
+            if not any(a and (cwd / os.fsdecode(a)).resolve() == WORKER for a in args[1:]):
+                continue
             try:
-                if proc.stat().st_uid == os.getuid():
-                    raise RuntimeError('Cannot inspect own processes')
-            except FileNotFoundError:
-                pass
+                executable = Path(os.readlink(proc / 'exe')).name
+            except PermissionError as error:
+                raise RuntimeError('Cannot verify existing worker executable') from error
+            if executable == 'node':
+                found.append(int(proc.name))
+        except (FileNotFoundError, ProcessLookupError, PermissionError):
+            continue
     return sorted(found)
 
 
