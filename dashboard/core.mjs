@@ -1,6 +1,6 @@
 import {taskSummary,statusLabel,LIMITS} from './shared.mjs';
 export {statusLabel,LIMITS};
-export const STATES=['queued','running','succeeded','failed','cancelled'];
+export const STATES=['queued','paused','running','succeeded','failed','cancelled'];
 export const TERMINAL=['succeeded','failed','cancelled'];
 export const REASONS={lines:'Lote de linhas',timeout:'Intervalo de 60 s',command_end:'Comando finalizado',final:'Finalização'};
 export function normalize(row){
