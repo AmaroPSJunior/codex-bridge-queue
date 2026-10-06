@@ -8,7 +8,7 @@ const state={rows:demoTasks().map(normalize),stats:null,mode:'demo',route:'overv
 let source=null;
 const routes={overview:['Agora','⌁'],live:['Ao vivo','●'],tasks:['Fila','◫'],history:['Prontas','✓'],settings:['Sistema','⚙']};
 const copy={queued:'Na fila',running:'Fazendo agora',succeeded:'Pronta',failed:'Precisa de atenção',cancelled:'Cancelada'};
-const label=r=>r?.task_name||r?.title||r?.label||'Tarefa sem título';
+const label=r=>r?.label||r?.task_name||r?.title||'Tarefa sem título';
 const stats=()=>state.stats||statistics(state.rows);
 const current=()=>state.rows.find(r=>r.status==='running');
 const queued=()=>state.rows.filter(r=>r.status==='queued').sort((a,b)=>(a.created_at||'').localeCompare(b.created_at||''));
