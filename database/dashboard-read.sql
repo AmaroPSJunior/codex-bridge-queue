@@ -50,7 +50,7 @@ returns jsonb language plpgsql stable security definer set search_path = '' as $
 declare answer jsonb;
 begin
  if not bridge_dashboard_private.bridge_dashboard_allowed() then raise exception 'Dashboard access denied' using errcode='42501'; end if;
- if p_status is not null and p_status not in ('queued','running','succeeded','failed','cancelled') then raise exception 'Invalid status'; end if;
+ if p_status is not null and p_status not in ('queued','paused','running','succeeded','failed','cancelled') then raise exception 'Invalid status'; end if;
  if length(p_query)>120 then raise exception 'Query too long'; end if;
  select coalesce(jsonb_agg(q.item order by q.created_at desc,q.id desc),'[]'::jsonb) into answer from (
   select bridge_dashboard_private.bridge_dashboard_projection(to_jsonb(t)) item,t.created_at,t.id from public.bridge_tasks t
