@@ -45,6 +45,7 @@ test('Supabase current executor delegates instruction validation to bridge (docu
 test('Supabase simulated full loop returns result and never reruns a finished row',async t=>{
  let row={id:'task-1',instruction:'hello',status:'queued'}, executions=0;
  const h=sb(t,async(u,o)=>{
+  if(u.includes('bridge_projects'))return response([]);
   if(!o.method){if(row.status==='succeeded'){h.proc.emit('SIGTERM');return response([]);}return response(row.status==='queued'?[row]:[]);}
   const b=JSON.parse(o.body);row={...row,...b};return response(o.headers.Prefer==='return=representation'?[row]:null);
  });
@@ -53,6 +54,6 @@ test('Supabase simulated full loop returns result and never reruns a finished ro
  assert.equal(row.status,'succeeded');assert.equal(row.result,'result');assert.equal(executions,1);
 });
 test('Supabase ambiguous claim response leaves running row and does not execute',async t=>{
- let status='queued';const h=sb(t,async(u,o)=>{if(o.method){status='running';throw Error('reply lost');}return response(status==='queued'?[{id:'1',instruction:'hello'}]:[]);});
+ let status='queued';const h=sb(t,async(u,o)=>{if(u.includes('bridge_projects'))return response([]);if(o.method){status='running';throw Error('reply lost');}return response(status==='queued'?[{id:'1',instruction:'hello'}]:[]);});
  const p=h.run('main()');await flush();assert.equal(status,'running');assert.equal(h.calls.length,0);h.timers.at(-1).fn();await flush();assert.equal(h.calls.length,0);h.proc.emit('SIGTERM');await p;
 });
