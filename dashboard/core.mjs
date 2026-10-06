@@ -26,6 +26,7 @@ export function statistics(rows){
 }
 export function hasNewProgress(previous,next){return BigInt(next?.progress_seq||0)>BigInt(previous?.progress_seq||0);}
 export function mergeTask(rows,next){const row=normalize(next),old=rows.find(r=>r.id===row.id);if(old&&(BigInt(row.progress_seq)<BigInt(old.progress_seq)||(BigInt(row.progress_seq)===BigInt(old.progress_seq)&&Date.parse(row.updated_at)<Date.parse(old.updated_at))))return rows;return [row,...rows.filter(r=>r.id!==row.id)].sort((a,b)=>(b.created_at||'').localeCompare(a.created_at||'')||b.id.localeCompare(a.id));}
+export function applyTaskChange(rows,payload,fresh){if(!payload?.id)return rows;if(String(payload.operation||'').toUpperCase()==='DELETE')return rows.filter(r=>r.id!==String(payload.id));return fresh?mergeTask(rows,fresh):rows;}
 export function workerSignal(rows,now=Date.now()){
  const last=Math.max(0,...rows.map(r=>Date.parse(r.last_progress_at)||0));
  return last&&now-last<120000?{label:'Atividade recente',kind:'running',detail:'Inferido por progresso; não é um heartbeat.'}:{label:'Worker não confirmado',kind:'unknown',detail:'A ponte ainda não publica heartbeat. Ausência de progresso não comprova offline.'};
