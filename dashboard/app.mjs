@@ -6,7 +6,7 @@ const $=s=>document.querySelector(s), main=$('#main'), nav=$('#nav');
 const state={rows:[],stats:null,mode:'offline',route:'overview',search:'',status:'all',connection:'offline',live:[],page:{number:1,rows:null,cursors:[null],hasNext:false,loading:false},build:{status:'hidden',sha:null,visibleUntil:0}};
 let source=null;
 const routes={overview:['Agora','⌁'],live:['Ao vivo','●'],tasks:['Fila','◫'],history:['Prontas','✓'],settings:['Sistema','⚙']};
-const copy={queued:'Na fila',running:'Fazendo agora',succeeded:'Pronta',failed:'Precisa de atenção',cancelled:'Cancelada'};
+const copy={queued:'Na fila',paused:'Pausada',running:'Fazendo agora',succeeded:'Pronta',failed:'Precisa de atenção',cancelled:'Cancelada'};
 const label=r=>{const clean=v=>String(v||'').replace(/^Tarefa\s+(?:\d+\s*[—-]\s*)?/i,'').trim();const name=clean(r?.task_name||r?.title)||'Sem título';const number=String(r?.task_number||'').trim();if(number)return `${number} — ${name}`;return clean(r?.label)||name;};
 const stats=()=>state.stats||statistics(state.rows);
 const current=()=>state.rows.find(r=>r.status==='running');
@@ -32,7 +32,7 @@ function livePage(){
  const lines=events.length?events.map(x=>'<div class="terminal-line '+e(x.kind||'output')+'"><time>'+e(new Date(x.at||Date.now()).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit',second:'2-digit'}))+'</time><span>'+e(x.message||'')+'</span></div>').join(''):'<div class="terminal-empty">Aguardando novos eventos…</div>';
  return '<section class="live-page"><div class="live-head"><div><span class="live-pill"><i></i> TEMPO REAL</span><h2>'+(r?e(label(r)):'Nenhuma tarefa em execução')+'</h2><p>'+(r?e(r.progress_message||'Acompanhando o Termux em tempo real.'):'Quando uma tarefa começar, ela aparecerá aqui automaticamente.')+'</p></div><div class="live-percent">'+n+'%</div></div>'+(r?'<div class="live-progress"><progress aria-label="Progresso ao vivo" max="100" value="'+n+'"></progress></div><div class="live-stage-grid"><div><span>Etapa atual</span><strong>'+e(stage)+'</strong></div><div><span>Eventos</span><strong>'+events.length+' nesta sessão</strong></div><div><span>Atualização</span><strong>'+e(ago(r.last_progress_at||r.updated_at))+'</strong></div></div><section class="terminal-card"><div class="terminal-top"><div><i></i><span>Termux ao vivo</span></div><small>conteúdo sensível é ocultado</small></div><div id="live-terminal" class="live-terminal" aria-live="polite">'+lines+'</div></section>':'<div class="empty-state big">O painel está conectado e aguardando a próxima execução.</div>')+'</section>';
 }
-function filters(){return '<div class="filters"><input id="task-search" type="search" value="'+e(state.search)+'" placeholder="Buscar tarefa..."><select id="task-status"><option value="all">Todas</option>'+['queued','running','succeeded','failed','cancelled'].map(x=>'<option value="'+x+'" '+(state.status===x?'selected':'')+'>'+e(copy[x])+'</option>').join('')+'</select></div>';}
+function filters(){return '<div class="filters"><input id="task-search" type="search" value="'+e(state.search)+'" placeholder="Buscar tarefa..."><select id="task-status"><option value="all">Todas</option>'+['queued','paused','running','succeeded','failed','cancelled'].map(x=>'<option value="'+x+'" '+(state.status===x?'selected':'')+'>'+e(copy[x])+'</option>').join('')+'</select></div>';}
 function taskRows(history=false){const sourceRows=!history&&state.page.rows?state.page.rows:state.rows;const rows=!history&&state.page.rows?sourceRows:filterTasks(sourceRows,{search:state.search,status:state.status,terminal:history});return rows.length?'<div class="task-grid">'+rows.map(r=>'<button class="task-card '+e(r.status)+'" data-task="'+e(r.id)+'"><div class="task-card-top"><span class="task-state">'+(r.status==='failed'?'⚠ ':'')+e(copy[r.status]||statusLabel(r.status))+'</span><span class="task-percent">'+e(pctText(r))+'</span></div><strong>'+e(label(r))+'</strong><div class="mini-bar"><i style="width:'+pct(r)+'%"></i></div><small>'+(r.status==='running'?e(r.progress_message||'em andamento'):date(r.completed_at||r.created_at))+'</small></button>').join('')+'</div>':'<div class="empty-state big">Nada por aqui.</div>';}
 function pager(){if(state.mode!=='live')return '';return '<div class="pager"><button id="page-prev" '+(state.page.number<=1||state.page.loading?'disabled':'')+'>← Anterior</button><span>Página '+state.page.number+'</span><button id="page-next" '+(!state.page.hasNext||state.page.loading?'disabled':'')+'>Próxima →</button></div>';}
 function taskPage(history=false){return '<section class="simple-page"><div class="page-intro"><span class="kicker">'+(history?'RESULTADOS':'FLUXO')+'</span><h2>'+(history?'Entregas recentes':'Todas as tarefas')+'</h2></div>'+filters()+'<div id="task-results">'+taskRows(history)+'</div>'+(history?'':pager())+'</section>';}
@@ -49,8 +49,8 @@ async function refresh(){if(!source)return;try{if(state.mode==='public')state.st
 async function event(payload){
  if(!payload?.id||!source||state.mode!=='live')return;
  const operation=String(payload.operation||'').toUpperCase();
- let fresh=null;
- if(operation!=='DELETE'){try{fresh=await source.summary(payload.id);}catch{}}
+ let fresh=payload.task||null;
+ if(operation!=='DELETE'&&!fresh){try{fresh=await source.summary(payload.id);}catch{}}
  state.rows=applyTaskChange(state.rows,payload,fresh?normalize(fresh):null);
  if(state.page.rows)state.page.rows=applyTaskChange(state.page.rows,payload,fresh?normalize(fresh):null);
  try{state.stats=await source.stats();}catch{}
