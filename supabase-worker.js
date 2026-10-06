@@ -5,9 +5,11 @@ process.env.CODEX_BRIDGE_PERMISSIONS_PROFILE ||= 'bridge-git';
 const fs=require('fs'),path=require('path'),{spawn}=require('child_process');
 const workerControl=require('./executors/worker-control');
 const {mode:executionMode,executeCommand}=require('./executors/command');
+const {executePlan}=require('./executors/plan');
 const {createCodexExecutor,toLegacyRun}=require('./executors/codex');
 const {createAntigravityExecutor}=require('./executors/antigravity');
 const {createLocalExecutor,configFromEnv}=require('./executors/local-openai');
+const {createLocalProviderExecutor}=require('./executors/local');
 const {createGroqExecutor}=require('./executors/groq');
 const {observation}=require('./executors/task-metadata');
 const {createLifecycle,lifecycleSettings}=require('./executors/task-lifecycle');
@@ -48,8 +50,14 @@ function progressFor(task){
   let file,fileClosed=false,localWarned=false;
   try{file=localLog(STATE,task.id);}catch{log('progress_local_log_unavailable');}
   const supported=['progress_message','recent_output','last_progress_at','progress_seq','last_flush_reason','last_flush_line_count'].every(k=>Object.prototype.hasOwnProperty.call(task,k));
+  const supportsPercent=Object.prototype.hasOwnProperty.call(task,'progress_percent');
   if(!supported)log('progress_local_only',{reason:'schema_pending'});
-  const progress=createProgress({env:process.env,initialSeq:task.progress_seq,append:s=>{if(file&&!fileClosed)file.append(s);},
+  const progress=createProgress({
+    env:process.env,
+    initialSeq:task.progress_seq,
+    provider:task.requested_provider||task.ai_provider||'codex',
+    includePercent:supportsPercent,
+    append:s=>{if(file&&!fileClosed)file.append(s);},
     onError:event=>{if(event==='local_log_failed'){if(localWarned)return;localWarned=true;}log(event);},write:async body=>{
       if(!supported)return {localOnly:true};
       const expected=String(BigInt(body.progress_seq)-1n);
@@ -61,12 +69,12 @@ function progressFor(task){
       if(rows?.length)return;
       // A previous response may have been lost. One bounded read reconciles that
       // exact snapshot; this is not a polling loop and never repeats the increment.
-      const saved=await request(route+'&select=progress_seq::text,progress_message,recent_output,last_flush_reason,last_flush_line_count&limit=1',{
+      const saved=await request(route+'&select=progress_seq::text,progress_message,recent_output,last_flush_reason,last_flush_line_count'+(supportsPercent?',progress_percent':'')+'&limit=1',{
         signal:AbortSignal.timeout(10000)
       });
       const row=saved?.[0];
       if(!row||String(row.progress_seq)!==body.progress_seq||
-         ['progress_message','recent_output','last_flush_reason','last_flush_line_count'].some(k=>row[k]!==body[k]))throw Error('Progress not acknowledged');
+         ['progress_message','recent_output','last_flush_reason','last_flush_line_count',...(supportsPercent?['progress_percent']:[])].some(k=>row[k]!==body[k]))throw Error('Progress not acknowledged');
 
     }});
   const close=progress.close;
@@ -124,7 +132,9 @@ function executeAntigravity(prompt,task={},progress){
 }
 function executeLocal(prompt,task={},progress,provider='local',workspaceToken){
   const controller=new AbortController();
-  const executor=provider==='groq'?createGroqExecutor({env:process.env,cwd:DIR,workspaceToken,timeoutMs:executionTimeoutMs()}):createLocalExecutor({...configFromEnv(process.env),env:process.env,timeoutMs:executionTimeoutMs()});
+  const executor=provider==='groq'
+    ?createGroqExecutor({env:process.env,cwd:DIR,workspaceToken,timeoutMs:executionTimeoutMs()})
+    :createLocalProviderExecutor({env:process.env,cwd:DIR,workspaceToken,timeoutMs:executionTimeoutMs()});
   const execution=executor.execute({instruction:prompt,signal:controller.signal,onProgress:async event=>{
     if(event.type==='output')progress?.feed(event.text,event.stream);
     else if(event.type==='command_end')await progress?.commandComplete?.(event.code);
@@ -143,6 +153,46 @@ function execute(prompt,task={},progress){
     },()=>{lease.retain();return {code:1,executionMode:'command',stdout:JSON.stringify({status:'failed',answer:'',error:'Execução local incerta.'}),stderr:''};});
     run.cancel=()=>controller.abort();return run;
   }
+  if(mode==='plan'){
+    let lease;
+
+    try{
+      lease=acquireWorkspace(DIR);
+    }catch{
+      return Promise.resolve({
+        code:1,
+        executionMode:'plan',
+        stdout:JSON.stringify({
+          status:'failed',
+          answer:'',
+          error:'Workspace ocupado ou incerto.'
+        }),
+        stderr:''
+      });
+    }
+
+    const controller=new AbortController();
+
+    const run=executePlan(task.plan_payload,{
+      cwd:DIR,
+      env:process.env,
+      signal:controller.signal,
+      progress,
+      taskId:task.id
+    }).then(result=>{
+      let parsed;
+      try{parsed=JSON.parse(result.stdout);}catch{}
+
+      if(parsed?.workspaceReleased===true)lease.release();
+      else lease.retain();
+
+      return result;
+    });
+
+    run.cancel=()=>controller.abort();
+    return run;
+  }
+
   const controlRun=workerControl.control(STATE,prompt,task);if(controlRun)return Promise.resolve(controlRun);
   let selected;
   try{
@@ -156,7 +206,8 @@ function execute(prompt,task={},progress){
   try{lease=acquireWorkspace(DIR);}catch{
     return Promise.resolve({code:1,stdout:JSON.stringify({status:'failed',answer:'',error:'Workspace ocupado ou com execução incerta. Nenhum executor iniciado.'}),stderr:''});
   }
-  const model=selected.provider==='groq'?(process.env.GROQ_MODEL||'openai/gpt-oss-120b'):selected.provider==='local'?(process.env.LOCAL_AI_MODEL||null):null;
+  progress?.setProvider?.(selected.provider);
+    const model=selected.provider==='groq'?(process.env.GROQ_MODEL||'openai/gpt-oss-120b'):selected.provider==='local'?(process.env.LOCAL_AI_MODEL||null):null;
   const lifecycle=createLifecycle({cwd:DIR,env:process.env,config,task});let execution,cancelled=false;
   function launch(){
     if(cancelled)throw Error('Cancelled before execution');
@@ -182,7 +233,7 @@ async function finish(task,run,progress){
   const metadata=observation(task,run,process.env);
   let parsed; try{parsed=JSON.parse(run.stdout.trim());}catch{}
   const ok=run.code===0&&parsed?.status==='completed';
-  const finalStatus=ok?'succeeded':run.executionMode==='command'&&parsed?.status==='cancelled'?'cancelled':'failed';
+  const finalStatus=ok?'succeeded':['command','plan'].includes(run.executionMode)&&parsed?.status==='cancelled'?'cancelled':'failed';
   const rawResult=typeof parsed?.answer==='string'?parsed.answer:run.stdout||'(sem resposta textual)';
   const result=String(rawResult).split(/\r?\n/).map(sanitizer(process.env)).join('\n');
   const rawError=parsed?.error||run.error||run.stderr||null;
@@ -194,6 +245,14 @@ async function finish(task,run,progress){
     if(Object.hasOwn(task,'command_result')&&run.commandResult)payload.command_result=run.commandResult;
     for(const field of ['actual_provider','provider_model','provider_session_id','fallback_from','fallback_reason'])if(Object.hasOwn(task,field))payload[field]=null;
   }
+  if(run.executionMode==='plan'){
+    if(Object.hasOwn(task,'plan_result')&&run.planResult)
+      payload.plan_result=run.planResult;
+
+    for(const field of ['actual_provider','provider_model','provider_session_id','fallback_from','fallback_reason'])
+      if(Object.hasOwn(task,field))payload[field]=null;
+  }
+
   if(run.gitMetadata&&['git_status','commit_sha','git_files'].every(k=>Object.prototype.hasOwnProperty.call(task,k)))Object.assign(payload,run.gitMetadata);
   // Durable sanitized receipt precedes publication; failure never reruns the provider.
   receipt(STATE,task.id,payload,metadata);

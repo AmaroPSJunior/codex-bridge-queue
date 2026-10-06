@@ -84,6 +84,13 @@ def supervise(lock_fd):
     env = os.environ.copy()
     # Operator-provisioned named profile; app-server rejects missing profiles.
     env['CODEX_BRIDGE_PERMISSIONS_PROFILE'] = env.get('CODEX_BRIDGE_PERMISSIONS_PROFILE') or 'bridge-git'
+    env['GROQ_MODE'] = env.get('GROQ_MODE') or 'agent'
+    env['GROQ_TRUSTED_WORKSPACE'] = env.get('GROQ_TRUSTED_WORKSPACE') or '1'
+    env['LOCAL_AI_BASE_URL'] = env.get('LOCAL_AI_BASE_URL') or 'http://127.0.0.1:18080'
+    env['LOCAL_AI_MODEL'] = env.get('LOCAL_AI_MODEL') or './models/qwen2.5-coder-3b-instruct-q4_k_m.gguf'
+    env['LOCAL_AI_MODE'] = env.get('LOCAL_AI_MODE') or 'agent'
+    env['LOCAL_AI_TRUSTED_WORKSPACE'] = env.get('LOCAL_AI_TRUSTED_WORKSPACE') or '1'
+    env['LOCAL_AI_STREAM'] = env.get('LOCAL_AI_STREAM') or '0'
     local_bin = str(Path.home() / '.local' / 'bin')
     env['PATH'] = local_bin + os.pathsep + env.get('PATH', '')
     # Worker resolves task > inherited AI_PROVIDER > private provider.json > codex.
@@ -136,14 +143,28 @@ def supervise(lock_fd):
     controller = SupervisorControl(ROOT, start)
     controller.write(controller.directory/'supervisor.json', {'pid': os.getpid(), 'version': 1})
     controller.child = start()
+    restart_attempts = 0
+    worker_started_at = time.time()
     while True:
         try:
             controller.tick()
             if controller.active is None and controller.child.poll() is not None:
-                controller.write(controller.directory/'supervisor.json',
-                                 {'pid': os.getpid(), 'version': 1, 'status': 'stopped', 'reason': 'worker_exited'})
-                logger.warning('supervisor_stopped_no_worker')
-                return  # Release our flock so a future launcher can recover.
+                runtime = time.time() - worker_started_at
+                if runtime >= 60:
+                    restart_attempts = 0
+                if restart_attempts >= 3:
+                    controller.write(controller.directory/'supervisor.json',
+                                     {'pid': os.getpid(), 'version': 1, 'status': 'stopped',
+                                      'reason': 'worker_restart_budget_exhausted'})
+                    logger.warning('supervisor_stopped_no_worker')
+                    return
+                restart_attempts += 1
+                delay = min(2 ** (restart_attempts - 1), 30)
+                logger.warning('worker_restart_scheduled attempt=%d delay=%d', restart_attempts, delay)
+                time.sleep(delay)
+                controller.child = start()
+                worker_started_at = time.time()
+                continue
         except Exception:
             logger.warning('supervisor_control_error')
         time.sleep(1)

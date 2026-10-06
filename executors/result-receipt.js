@@ -18,8 +18,8 @@ function pending(dir){
  return files.slice(offset,offset+10).map(name=>{
   const file=path.join(folder,name),fd=fs.openSync(file,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW);
   try{const s=fs.fstatSync(fd);if(s.uid!==process.getuid()||!s.isFile()||s.size>8*1024*1024||(s.mode&0o777)!==0o600)throw Error('Invalid receipt');
-   const r=JSON.parse(fs.readFileSync(fd,'utf8'));if(typeof r.id!=='string'||!r.payload||!['succeeded','failed'].includes(r.payload.status)||crypto.createHash('sha256').update(r.id).digest('hex')+'.json'!==name)throw Error('Invalid receipt');
-   if(Object.keys(r.payload).some(k=>!['status','result','error','completed_at','updated_at','git_status','commit_sha','git_files'].includes(k))||typeof r.payload.result!=='string'||!(r.payload.error===null||typeof r.payload.error==='string'))throw Error('Invalid receipt payload');
+   const r=JSON.parse(fs.readFileSync(fd,'utf8'));if(typeof r.id!=='string'||!r.payload||!['succeeded','failed','cancelled'].includes(r.payload.status)||crypto.createHash('sha256').update(r.id).digest('hex')+'.json'!==name)throw Error('Invalid receipt');
+   if(Object.keys(r.payload).some(k=>!['status','result','error','completed_at','updated_at','execution_mode','command_result','plan_result','actual_provider','provider_model','provider_session_id','fallback_from','fallback_reason','git_status','commit_sha','git_files'].includes(k))||typeof r.payload.result!=='string'||!(r.payload.error===null||typeof r.payload.error==='string'))throw Error('Invalid receipt payload');
    return {...r,file};
   }finally{fs.closeSync(fd);}
  });

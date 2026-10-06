@@ -6,7 +6,16 @@ const {sanitizer}=require('../task-progress');
 const MAX_OUTPUT=65536,MAX_TIMEOUT=60000;
 function mode(task={}){
  const value=task.execution_mode??'agent';
- if(!['agent','command'].includes(value)||value==='agent'&&task.command_payload!=null)throw Error('Modo/payload incompatível.');
+
+ if(!['agent','command','plan'].includes(value))
+  throw Error('Modo/payload incompatível.');
+
+ if(
+  (value==='agent'&&(task.command_payload!=null||task.plan_payload!=null))||
+  (value==='command'&&(task.command_payload==null||task.plan_payload!=null))||
+  (value==='plan'&&(task.plan_payload==null||task.command_payload!=null))
+ ) throw Error('Modo/payload incompatível.');
+
  return value;
 }
 function validate(payload){

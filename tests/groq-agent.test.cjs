@@ -17,7 +17,7 @@ test('agent edita, valida, termina e libera lock nos dois modelos',async t=>{
  const r=await f.run();assert.equal(r.status,'completed');assert.equal(fs.readFileSync(path.join(f.cwd,'example.js'),'utf8'),'module.exports=42;');assert.equal(fs.existsSync(path.join(f.cwd,'.bridge-workspace-lock')),false);assert.ok(f.events.some(e=>e.type==='command_end'&&e.code===0));assert.equal(f.requests[0].model,model);
  }
 });
-test('agent não declara sucesso textual sem validação',async t=>{const f=await fixture(t,[done]);assert.equal((await f.run()).status,'failed');});
+test('agent permite sucesso textual sem validação quando não houve edição',async t=>{const f=await fixture(t,[done]);assert.equal((await f.run()).status,'completed');});
 test('agent recusa comando arbitrário e traversal',async t=>{for(const step of [call('run_check',{name:'rm -rf /'}),call('write_file',{path:'../escape',content:'x'}),call('read_file',{path:'.env'})]){const f=await fixture(t,[step]);assert.equal((await f.run()).error.code,'permission');}});
 test('agent limite de iterações e validação invalidada por edição',async t=>{const f=await fixture(t,[call('list_files',{path:''})],{maxIterations:1});assert.match((await f.run()).error.message,/iterações/);const g=await fixture(t,[call('run_check',{name:'tests'}),call('write_file',{path:'x',content:'x'}),done]);assert.equal((await g.run()).status,'failed');});
 test('agent testes falhos nunca viram sucesso',async t=>{const f=await fixture(t,[call('run_check',{name:'tests'}),done]);fs.writeFileSync(path.join(f.cwd,'package.json'),JSON.stringify({scripts:{test:'node -e "process.exit(1)"'}}));assert.equal((await f.run()).status,'failed');});

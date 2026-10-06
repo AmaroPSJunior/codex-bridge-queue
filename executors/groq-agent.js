@@ -6,10 +6,10 @@ const {sanitizer}=require('../task-progress');
 const {LIMITS,bounded,prepare}=require('./groq-context');
 const MODELS=['openai/gpt-oss-20b','openai/gpt-oss-120b'];
 const fail=(code,message)=>Object.assign(new Error(message),{kind:code});
-const definitions=[['list_files',{path:{type:'string'}}],['read_file',{path:{type:'string'}}],['write_file',{path:{type:'string'},content:{type:'string'}}],['run_check',{name:{type:'string',enum:['tests','git_status','git_diff']}}]].map(([name,properties])=>({type:'function',function:{name,description:name,parameters:{type:'object',properties,required:Object.keys(properties),additionalProperties:false}}}));
+const definitions=[['list_files',{path:{type:'string'}}],['read_file',{path:{type:'string'}}],['write_file',{path:{type:'string'},content:{type:'string'}}],['search',{path:{type:'string'},query:{type:'string'}}],['run_check',{name:{type:'string',enum:['tests','git_status','git_diff']}}]].map(([name,properties])=>({type:'function',function:{name,description:name,parameters:{type:'object',properties,required:Object.keys(properties),additionalProperties:false}}}));
 // Optional character-range reads allow recovering truncated file content safely.
 definitions.find(d=>d.function.name==='read_file').function.parameters.properties.offset={type:'integer',minimum:0,maximum:131072};
-definitions.find(d=>d.function.name==='read_file').function.parameters.properties.length={type:'integer',minimum:1,maximum:256};
+definitions.find(d=>d.function.name==='read_file').function.parameters.properties.length={type:'integer',minimum:1,maximum:4096};
 // Exact Harmony artifact observed on GPT-OSS; no trimming, fuzzy matching or splitting.
 function normalizeToolCall(call){
  const original=call?.function?.name;
@@ -39,7 +39,7 @@ function createAgent({cwd,workspaceToken,model,apiKey,baseUrl,env=process.env,fe
   for(const [i,part] of parts.entries()){
    // Permit a plain dotfile at the root, never hidden directory traversal.
    const rootDotfile=parts.length===1&&i===0&&/^\.[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(part);
-   if(part==='..'||protectedNames.has(part.toLowerCase())||part.startsWith('.')&&!rootDotfile||/^(node_modules|logs|state)$/.test(part)||/secret|credential|token|thread-id|receipt|\.env|\.pem$|\.key$/i.test(part))throw fail('permission','Caminho recusado');
+   if(part==='..'||protectedNames.has(part.toLowerCase())||part.startsWith('.')&&!rootDotfile||/^(node_modules|logs|state|supabase-state|pending-results|recovered-receipts)$/i.test(part)||/secret|credential|token|thread-id|\.env|\.pem$|\.key$/i.test(part))throw fail('permission','Caminho recusado');
   }
   const dest=path.resolve(root,...parts);
   if(dest!==root&&!dest.startsWith(root+path.sep)||write&&dest===root)throw fail('permission','Caminho recusado');
@@ -55,7 +55,7 @@ function createAgent({cwd,workspaceToken,model,apiKey,baseUrl,env=process.env,fe
   return dest;
  }
  return defineExecutor({version:1,provider:{id:'groq'},async execute(input){
-  let lease,answer='',uncertain=false,validated=false,timed=false;
+  let lease,answer='',uncertain=false,validated=false,edited=false,timed=false;
   const controller=new AbortController(),abort=()=>controller.abort();input.signal?.addEventListener('abort',abort,{once:true});if(input.signal?.aborted)abort();
   const timer=setTimeout(()=>{timed=true;abort();},timeoutMs);
   const emit=async text=>input.onProgress({type:'output',stream:'stdout',text:safe(text)+'\n'});
@@ -78,15 +78,49 @@ function createAgent({cwd,workspaceToken,model,apiKey,baseUrl,env=process.env,fe
    if(!a||Array.isArray(a)||typeof a!=='object')throw fail('protocol','Argumentos inválidos');
    let out;
    if(name==='list_files')out=fs.readdirSync(target(a.path)).filter(x=>!x.startsWith('.')&&!/secret|credential|token/i.test(x)).slice(0,500).join('\n');
-   else if(name==='read_file'){const p=target(a.path),st=fs.statSync(p);if(!st.isFile()||st.size>131072)throw fail('permission','Arquivo excede limite');const text=fs.readFileSync(p,'utf8');out=a.offset!==undefined||a.length!==undefined?Array.from(text).slice(a.offset||0,(a.offset||0)+(a.length||256)).join(''):text;}
-   else if(name==='write_file'){if(typeof a.content!=='string'||Buffer.byteLength(a.content)>131072||safe(a.content)!==a.content)throw fail('permission','Conteúdo recusado');fs.writeFileSync(target(a.path,true),a.content,{flag:'w',mode:0o600});validated=false;out='Arquivo atualizado';}
+   else if(name==='read_file'){const p=target(a.path),st=fs.statSync(p);if(!st.isFile()||st.size>1048576)throw fail('permission','Arquivo excede limite');const text=fs.readFileSync(p,'utf8');out=a.offset!==undefined||a.length!==undefined?Array.from(text).slice(a.offset||0,(a.offset||0)+(a.length||256)).join(''):text;}
+   else if(name==='write_file'){if(typeof a.content!=='string'||Buffer.byteLength(a.content)>131072||safe(a.content)!==a.content)throw fail('permission','Conteúdo recusado');fs.writeFileSync(target(a.path,true),a.content,{flag:'w',mode:0o600});edited=true;validated=false;out='Arquivo atualizado';}
+   else if(name==='search'){
+    const base=target(a.path);
+    if(typeof a.query!=='string'||!a.query||a.query.length>256)throw fail('permission','Consulta recusada');
+    const hits=[];
+    function walk(dir){
+     if(hits.length>=200)return;
+     let entries;
+     try{entries=fs.readdirSync(dir,{withFileTypes:true});}catch{return;}
+     for(const e of entries){
+      if(hits.length>=200)break;
+      if(e.name.startsWith('.')||['node_modules','logs','state','supabase-state'].includes(e.name))continue;
+      if(/secret|credential|token|receipt|\.env|\.pem$|\.key$/i.test(e.name))continue;
+      const fp=path.join(dir,e.name);
+      if(e.isDirectory()){walk(fp);continue;}
+      if(!e.isFile())continue;
+      let st;try{st=fs.statSync(fp);}catch{continue;}
+      if(st.size>131072)continue;
+      let txt;try{txt=fs.readFileSync(fp,'utf8');}catch{continue;}
+      const lines=txt.split(/\r?\n/);
+      for(let i=0;i<lines.length&&hits.length<200;i++){
+       if(lines[i].includes(a.query)){
+        hits.push(path.relative(root,fp)+':'+(i+1)+': '+safe(lines[i]).slice(0,300));
+       }
+      }
+     }
+    }
+    const st=fs.statSync(base);
+    if(st.isDirectory())walk(base);
+    else{
+     const txt=fs.readFileSync(base,'utf8');
+     txt.split(/\r?\n/).forEach((line,i)=>{if(hits.length<200&&line.includes(a.query))hits.push(path.relative(root,base)+':'+(i+1)+': '+safe(line).slice(0,300));});
+    }
+    out=hits.join('\n')||'Nenhuma ocorrência encontrada';
+   }
    else if(name==='run_check'){let r;try{r=await command(a.name);}catch(e){if(typeof e.output==='string'){await emit(e.output);await input.onProgress({type:'command_end',code:null});}throw e;}await emit(r.text);await input.onProgress({type:'command_end',code:r.code});if(r.code!==0)throw fail('execution','Verificação falhou');if(a.name==='tests')validated=true;out=r.text||'Verificação concluída';}
    else throw fail('permission','Ferramenta recusada');
    await emit('Ferramenta: '+name);return bounded(safe(out),LIMITS.tool);
   }
   try{
    lease=acquire(root,workspaceToken);
-   const messages=[{role:'system',content:'Execute a tarefa no workspace usando somente as ferramentas disponíveis. Não acesse segredos. Não faça commits ou push. Execute tests depois da última edição. Só finalize quando a tarefa estiver concluída e validada. Saídas marcadas TRUNCADA são parciais: releia arquivos com read_file offset/length antes de editar; nunca reconstrua um arquivo com base em um trecho incompleto.'},{role:'user',content:safe(input.instruction)}];
+   const messages=[{role:'system',content:'Você é um agente de engenharia de software autorizado pelo proprietário deste workspace a inspecionar e modificar os arquivos do projeto exclusivamente por meio das ferramentas fornecidas nesta sessão. Para tarefas sobre recibos, estado, filas ou arquivos privados, NÃO tente acessar diretórios reais como supabase-state, state, logs, .config ou receipts. Em vez disso, inspecione apenas o código-fonte e os testes do projeto e crie fixtures/mocks dentro da suíte de testes para reproduzir o comportamento de forma segura. Use list_files, read_file, write_file e run_check quando necessário. Essas operações são esperadas e autorizadas para manutenção do próprio projeto. Não recuse uma tarefa apenas porque ela envolve editar código, corrigir testes, analisar git status/diff ou executar npm test. Não acesse segredos, credenciais, arquivos protegidos, rede externa, shell arbitrário ou recursos fora das ferramentas disponíveis. Não faça commits ou push diretamente. Se a instrução pedir uma etapa que não existe nas ferramentas disponíveis, execute todas as partes possíveis da tarefa, valide as alterações e explique objetivamente no resultado final apenas a etapa externa que ficou pendente. Execute tests depois da última edição. Só finalize quando a parte executável da tarefa estiver concluída e validada. Saídas marcadas TRUNCADA são parciais: releia arquivos com read_file offset/length antes de editar; nunca reconstrua um arquivo com base em um trecho incompleto.'},{role:'user',content:safe(input.instruction)}];
    for(let i=0;i<maxIterations;i++){
     if(controller.signal.aborted)throw fail('cancelled','Execução interrompida');
     const prepared=prepare(messages,{model,tools:definitions,tool_choice:'auto',parallel_tool_calls:false,stream:false,...(model==='openai/gpt-oss-20b'?{disable_tool_validation:true}:{})},validated);
@@ -98,7 +132,7 @@ function createAgent({cwd,workspaceToken,model,apiKey,baseUrl,env=process.env,fe
     const c=data.choices?.[0],m=c?.message;if(!m||m.function_call||m.tool_calls&&!Array.isArray(m.tool_calls))throw fail('protocol','Resposta sem mensagem válida');
     if(m.content){answer=safe(m.content);await emit(answer);}
     if(m.tool_calls?.length){if(c.finish_reason!=='tool_calls'||m.tool_calls.length>8)throw fail('protocol','Chamada inválida');const calls=m.tool_calls.map(normalizeToolCall);if(new Set(calls.map(call=>call.id)).size!==calls.length)throw fail('protocol','IDs de ferramentas duplicados');messages.push({role:'assistant',content:typeof m.content==='string'?bounded(safe(m.content),LIMITS.assistant):null,tool_calls:calls});for(const call of calls){if(controller.signal.aborted)throw fail('cancelled','Execução interrompida');const output=await tool(call);messages.push({role:'tool',tool_call_id:call.id,content:output});}continue;}
-    if(c.finish_reason!=='stop'||typeof m.content!=='string'||!m.content.trim()||!validated)throw fail('execution','Conclusão sem validação bem-sucedida');
+    if(c.finish_reason!=='stop'||typeof m.content!=='string'||!m.content.trim()||(edited&&!validated))throw fail('execution','Conclusão sem validação bem-sucedida');
     if(controller.signal.aborted)throw fail('cancelled','Execução interrompida');
     lease.release();return {provider:'groq',session:{provider:'groq',id:null,state:'completed'},status:'completed',answer,error:null,workspaceReleased:true};
    }

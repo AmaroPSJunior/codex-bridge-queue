@@ -9,7 +9,7 @@ for(const provider of ['codex','antigravity','local','groq'])for(const legacy of
   await input.onProgress({type:'command_end',code:1});
   return {provider,session:{provider,id:null,state:'failed'},status:'failed',answer:'partial',error:{code:'execution',message:'safe error',retryable:false},workspaceReleased:true};
  }});
- const modules={'./executors/antigravity':{createAntigravityExecutor:mock},'./executors/local-openai':{configFromEnv:()=>({}),createLocalExecutor:mock},'./executors/groq':{createGroqExecutor:mock}};
+ const modules={'./executors/antigravity':{createAntigravityExecutor:mock},'./executors/local-openai':{configFromEnv:()=>({}),createLocalExecutor:mock},'./executors/local':{createLocalProviderExecutor:mock},'./executors/groq':{createGroqExecutor:mock}};
  const h=harness(t,'supabase-worker.js',{env:{AI_PROVIDER:'codex',LOCAL_AI_MODEL:'original',GROQ_MODEL:'openai/gpt-oss-120b'},modules,fetch:async(url,opts)=>{calls.push({url,body:JSON.parse(opts.body)});return {ok:true,text:async()=>url.includes('/rpc/')?'true':''};}});
  const task={id:'technical-id',task_number:9,title:'Minha tarefa',...(legacy?{ai_provider:provider}:{...Object.fromEntries(FIELDS.map(k=>[k,null])),requested_provider:provider})};
  h.set('task',task);h.set('progress',{feed:(text)=>events.push(text),commandComplete:async()=>events.push('end')});
@@ -27,12 +27,26 @@ test('Claude optional is fail-closed and never substitutes Codex',async t=>{
  const h=harness(t,'supabase-worker.js');const r=await h.run("execute('ok',{requested_provider:'claude'})");assert.equal(r.code,1);assert.equal(h.calls.length,0);
 });
 test('receipt recovery republishes without execution, preserves cancelled rows',async t=>{
- const h=harness(t,'supabase-worker.js');const dir=path.join(h.dir,'supabase-state'),payload={status:'failed',result:'partial',error:'failure'};
+ const h=harness(t,'supabase-worker.js');const dir=path.join(h.dir,'supabase-state'),payload={status:'failed',result:'partial',error:'failure',execution_mode:'agent'};
  receipt(dir,'id',payload);let row={status:'running'},patches=0;
  h.set('fetch',async(url,opts={})=>{if(opts.method==='PATCH'){patches++;row=payload;return {ok:true,text:async()=>''};}return {ok:true,text:async()=>JSON.stringify([row])};});
  await h.run('recoverResults()');assert.equal(patches,1);assert.equal(h.calls.length,0);assert.equal(fs.readdirSync(path.join(dir,'pending-results')).length,0);
  receipt(dir,'id',payload);row={status:'cancelled'};await h.run('recoverResults()');assert.equal(patches,1);assert.equal(fs.readdirSync(path.join(dir,'pending-results')).length,1);
 });
+test('receipt recovery accepts cancelled command payload',async t=>{
+ const h=harness(t,'supabase-worker.js'),dir=path.join(h.dir,'supabase-state');
+ const payload={status:'cancelled',result:'cancelled',error:null,execution_mode:'command',command_result:{cancelled:true},actual_provider:null,provider_model:null,provider_session_id:null,fallback_from:null,fallback_reason:null};
+ receipt(dir,'cancelled-id',payload);
+ let row={status:'running'},patches=0;
+ h.set('fetch',async(url,opts={})=>{
+  if(opts.method==='PATCH'){patches++;row=payload;return {ok:true,text:async()=>''};}
+  return {ok:true,text:async()=>JSON.stringify([row])};
+ });
+ await h.run('recoverResults()');
+ assert.equal(patches,1);
+ assert.equal(fs.readdirSync(path.join(dir,'pending-results')).length,0);
+});
+
 test('validation failure preserves answer and prevents false success/commit',async()=>{
  const calls=[];const l=createLifecycle({cwd:'/unused',env:{CODEX_BRIDGE_VALIDATE:'1'},run:async(file,args)=>{calls.push([file,args]);throw Error('test failed');}});
  const r=await l.complete({code:0,stdout:JSON.stringify({status:'completed',answer:'partial',workspaceReleased:true})});

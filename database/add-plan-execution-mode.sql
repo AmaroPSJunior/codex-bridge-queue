@@ -12,44 +12,28 @@ ALTER TABLE public.bridge_tasks
 DO $$
 BEGIN
  IF EXISTS (
-   SELECT 1
-   FROM pg_constraint
+   SELECT 1 FROM pg_constraint
    WHERE conrelid='public.bridge_tasks'::regclass
      AND conname='bridge_execution_mode_valid'
  ) THEN
-   ALTER TABLE public.bridge_tasks
-     DROP CONSTRAINT bridge_execution_mode_valid;
+   ALTER TABLE public.bridge_tasks DROP CONSTRAINT bridge_execution_mode_valid;
  END IF;
 
  ALTER TABLE public.bridge_tasks
  ADD CONSTRAINT bridge_execution_mode_valid CHECK (
    execution_mode IS NOT NULL
    AND execution_mode IN ('agent','command','plan')
-
    AND (
-     (
-       execution_mode='agent'
-       AND command_payload IS NULL
-       AND plan_payload IS NULL
-     )
+     (execution_mode='agent' AND command_payload IS NULL AND plan_payload IS NULL)
      OR
-     (
-       execution_mode='command'
-       AND command_payload IS NOT NULL
-       AND plan_payload IS NULL
-       AND jsonb_typeof(command_payload)='object'
-       AND octet_length(command_payload::text)<=8192
-     )
+     (execution_mode='command' AND command_payload IS NOT NULL AND plan_payload IS NULL
+      AND jsonb_typeof(command_payload)='object'
+      AND octet_length(command_payload::text)<=8192)
      OR
-     (
-       execution_mode='plan'
-       AND plan_payload IS NOT NULL
-       AND command_payload IS NULL
-       AND jsonb_typeof(plan_payload)='object'
-       AND octet_length(plan_payload::text)<=262144
-     )
+     (execution_mode='plan' AND plan_payload IS NOT NULL AND command_payload IS NULL
+      AND jsonb_typeof(plan_payload)='object'
+      AND octet_length(plan_payload::text)<=262144)
    )
-
    AND (
      command_result IS NULL
      OR (
@@ -58,7 +42,6 @@ BEGIN
        AND octet_length(command_result::text)<=524288
      )
    )
-
    AND (
      plan_result IS NULL
      OR (
@@ -70,9 +53,5 @@ BEGIN
  );
 END
 $$;
-
--- Preserve existing status constraints, RLS, grants, UUIDs and claim semantics.
--- Agent rows carry no deterministic payload.
--- Command and plan payload/result types are mutually exclusive.
 
 COMMIT;

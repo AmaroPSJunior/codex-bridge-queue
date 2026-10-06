@@ -204,16 +204,12 @@ process.on('SIGTERM',()=>{clearInterval(timer);setTimeout(()=>{fs.appendFileSync
             for child in children:self.assertEqual(child.wait(timeout=5),0)
             self.assertEqual(local.workers(),[new])
             with self.assertRaises(BlockingIOError):local.open_lock()
-            # Only test processes: after an unrequested exit the supervisor must
-            # release its lock, without automatically creating a restart loop.
+            # Only test processes: an unrequested exit is restarted automatically
+            # while the supervisor keeps its exclusive lock and bounded budget.
             os.kill(new,signal.SIGTERM)
-            wait_for(lambda:json.loads((directory/'supervisor.json').read_text()).get('status')=='stopped')
-            def unlocked():
-                try: fd=local.open_lock()
-                except BlockingIOError:return False
-                os.close(fd);return True
-            wait_for(unlocked)
-            self.assertEqual(local.workers(),[])
+            restarted=wait_for(lambda:(lambda pids:pids[0] if len(pids)==1 and pids[0]!=new else None)(local.workers()))
+            self.assertNotEqual(restarted,new)
+            with self.assertRaises(BlockingIOError):local.open_lock()
             self.assertEqual(json.loads(request.read_text())['status'],'acknowledged')
         finally:
             # Verify ownership before signalling anything; all paths are temporary.

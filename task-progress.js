@@ -3,7 +3,24 @@ const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypt
 const {StringDecoder}=require('node:string_decoder');
 const {performance}=require('node:perf_hooks');
 const MAX_LINES=500,MAX_BYTES=512*1024,INTERVAL=60000,FLUSH_LINES=30;
-const STAGES={commandUnknown:'Comando terminou; código de saída indisponível.',commandDone:'Comando concluído.',commandError:'Comando terminou com erro.',running:'Codex está executando a tarefa.',command:'Executando comando e recebendo saída.',message:'Codex está preparando a resposta.',succeeded:'Execução concluída; publicando resultado.',failed:'Execução falhou; publicando resultado.',cancelled:'Execução cancelada; publicando resultado.',shutdown:'Worker encerrando; preservando progresso.'};
+const PROVIDERS={local:'Qwen',codex:'Codex',groq:'Groq',antigravity:'Antigravity',claude:'Claude'};
+const STAGES={
+ commandUnknown:{percent:65,text:'Comando terminou; verificando resultado'},
+ commandDone:{percent:70,text:'Comando concluído'},
+ commandError:{percent:70,text:'Corrigindo após erro de comando'},
+ running:{percent:25,text:'Analisando a tarefa'},
+ inspecting:{percent:35,text:'Inspecionando arquivos'},
+ editing:{percent:45,text:'Editando arquivos'},
+ command:{percent:60,text:'Executando comando'},
+ validating:{percent:85,text:'Validando alterações'},
+ message:{percent:90,text:'Preparando resposta'},
+ succeeded:{percent:95,text:'Publicando resultado'},
+ failed:{percent:95,text:'Publicando falha'},
+ cancelled:{percent:95,text:'Publicando cancelamento'},
+ shutdown:{percent:95,text:'Preservando progresso antes de encerrar'}
+};
+const providerLabel=p=>PROVIDERS[p]||String(p||'Executor');
+const stageMessage=(stage,provider,percent)=>providerLabel(provider)+' | '+percent+'% | '+STAGES[stage].text;
 function sanitizer(env={}) {
  const secrets=Object.entries(env).filter(([k,v])=>/KEY|TOKEN|SECRET|PASSWORD|PASSWD|AUTH|CREDENTIAL/i.test(k)&&typeof v==='string'&&v.length>0).map(([,v])=>v).sort((a,b)=>b.length-a.length);
  return value=>{
@@ -23,9 +40,9 @@ function sanitizer(env={}) {
    .replace(/[\x00-\x08\x0b-\x1f\x7f]/g,'');
  };
 }
-function createProgress({write=async()=>{},append=()=>{},env={},initialSeq=0,now=()=>performance.now(),timer=setTimeout,cancel=clearTimeout,onError=()=>{}}={}) {
+function createProgress({write=async()=>{},append=()=>{},env={},initialSeq=0,provider='codex',includePercent=false,now=()=>performance.now(),timer=setTimeout,cancel=clearTimeout,onError=()=>{}}={}) {
  const clean=sanitizer(env),lines=[],streams=new Map();
- let pending=0,lastSuccess=now(),retryAt=0,handle,inflight,closed=false,stage='running',seq,attempt,suppressBatch=false;
+ let pending=0,lastSuccess=now(),retryAt=0,handle,inflight,closed=false,stage='running',seq,attempt,suppressBatch=false,currentProvider=provider,maxPercent=STAGES.running.percent;
  try {seq=BigInt(initialSeq||0);if(seq<0n)seq=0n;}catch{seq=0n;}
  const text=()=>lines.join('\n');
  function clear(){if(handle!==undefined){cancel(handle);handle=undefined;}}
@@ -37,7 +54,9 @@ function createProgress({write=async()=>{},append=()=>{},env={},initialSeq=0,now
  function line(value){
   if(closed)return;
   if(value==='Executando comando.')stage='command';
-  if(value==='Codex está preparando a resposta.')stage='message';
+  if(/^(?:Codex|Qwen|Groq|Antigravity) está preparando a resposta\.?$/i.test(value))stage='message';
+  if(/^Ferramenta: (?:list_files|read_file|search)$/.test(value))stage='inspecting';
+  if(/^Ferramenta: (?:write_file|set_package_script|remove_package_script)$/.test(value))stage='editing';
   let safe=clean(value);
   // Single over-limit lines are omitted whole, never cut through a secret.
   if(Buffer.byteLength(JSON.stringify(safe),'utf8')>MAX_BYTES)safe='[linha excede limite; omitida]';
@@ -76,8 +95,15 @@ function createProgress({write=async()=>{},append=()=>{},env={},initialSeq=0,now
   clear();
   if(!attempt){
    const count=pending;
-   attempt={count,payload:{progress_message:STAGES[stage],recent_output:text(),progress_seq:String(seq+1n),
-     last_flush_reason:reason,last_flush_line_count:Math.min(count,lines.length)}};
+   maxPercent=Math.max(maxPercent,STAGES[stage].percent);
+   attempt={count,payload:{
+     progress_message:stageMessage(stage,currentProvider,maxPercent),
+     ...(includePercent?{progress_percent:maxPercent}:{}),
+     recent_output:text(),
+     progress_seq:String(seq+1n),
+     last_flush_reason:reason,
+     last_flush_line_count:Math.min(count,lines.length)
+   }};
   }
   const current=attempt;
   // Retry the exact same snapshot after ambiguity; never allocate a new sequence on failure.
@@ -108,7 +134,12 @@ function createProgress({write=async()=>{},append=()=>{},env={},initialSeq=0,now
   stage=STAGES[nextStage]?nextStage:stage;suppressBatch=true;drain();closed=true;suppressBatch=false;clear();
   await flushRemaining('final');clear();
  }
- return {feed,line,flush,checkpoint,commandComplete,close,setStage:s=>{if(STAGES[s])stage=s;},snapshot:()=>({lines:[...lines],pending,lastSuccess,seq:String(seq),closed})};
+ return {
+  feed,line,flush,checkpoint,commandComplete,close,
+  setStage:s=>{if(STAGES[s])stage=s;},
+  setProvider:p=>{if(typeof p==='string'&&p)currentProvider=p;},
+  snapshot:()=>({lines:[...lines],pending,lastSuccess,seq:String(seq),closed,stage,provider:currentProvider,percent:maxPercent})
+ };
 }
 function commandStream(progress,onDiagnostic=()=>{}){
  const decoder=new StringDecoder('utf8');let partial='',dropping=false;

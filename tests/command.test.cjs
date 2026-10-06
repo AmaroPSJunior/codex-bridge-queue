@@ -52,6 +52,7 @@ test('worker command bypasses provider and lifecycle, persists mode/result only'
  let invoked=0,released=0,body;
  const h=harness(t,'supabase-worker.js',{modules:{
   './executors/command':{mode,executeCommand:async()=>{invoked++;return {code:0,executionMode:'command',commandResult:{exit_code:0,stdout:'OK',stderr:''},stdout:JSON.stringify({status:'completed',answer:'OK',workspaceReleased:true})};}},
+   './executors/plan':{executePlan:async()=>{throw Error('plan must not run');}},
   './executors/workspace-lock':{acquire:()=>({release(){released++;},retain(){}})},
   './executors/task-lifecycle':{createLifecycle(){throw Error('must not call');}}
  },env:{AI_PROVIDER:'invalid',CODEX_BRIDGE_TASK_GIT:'1'},fetch:async(u,o)=>{assert.ok(!u.includes('/rpc/'));body=JSON.parse(o.body);return {ok:true,text:async()=>''};}});
@@ -60,6 +61,6 @@ test('worker command bypasses provider and lifecycle, persists mode/result only'
  assert.equal(invoked,1);assert.equal(released,1);assert.equal(h.calls.length,0);assert.equal(body.execution_mode,'command');assert.equal(body.command_result.exit_code,0);assert.equal(body.actual_provider,null);
 });
 test('worker command cancellation publishes cancelled and final flush',async t=>{
- let body,stage;const h=harness(t,'supabase-worker.js',{fetch:async(u,o)=>{body=JSON.parse(o.body);return {ok:true,text:async()=>''};}});
+ let body,stage;const h=harness(t,'supabase-worker.js',{modules:{'./executors/plan':{executePlan:async()=>{throw Error('plan must not run');}}},fetch:async(u,o)=>{body=JSON.parse(o.body);return {ok:true,text:async()=>''};}});
  h.set('progress',{close:async s=>{stage=s;}});h.set('r',{code:1,executionMode:'command',stdout:JSON.stringify({status:'cancelled',answer:'',error:'cancelled'})});await h.run("finish({id:'task',execution_mode:'command'},r,progress)");assert.equal(body.status,'cancelled');assert.equal(stage,'cancelled');
 });

@@ -16,6 +16,7 @@ function harness(t,file,options={}) {
  }
  const context={Buffer,URL,AbortSignal,AbortController,console:{log:s=>logs.push(s),error:s=>logs.push(s)},__dirname:dir,__filename:path.join(dir,file),process:proc,module:{exports:{}},exports:{},fetch:options.fetch||(()=>{throw Error('Unexpected network call');}),setTimeout:(fn,ms)=>{const x={fn,ms,unref(){return this;}};timers.push(x);return x;},clearTimeout:x=>{if(x)x.cleared=true;},setInterval:(fn,ms)=>{timers.push({fn,ms});},require:name=>{
   if(name==='./executors/command')return options.modules?.[name]||require('../executors/command');
+  if(name==='./executors/plan')return options.modules?.[name]||require('../executors/plan');
   if(name==='./executors/workspace-lock')return options.modules?.[name]||{acquire:()=>({token:undefined,release(){},retain(){}})};
   if(name==='./executors/provider-config')return require('../executors/provider-config');
   if(name==='./executors/task-lifecycle')return options.modules?.[name]||require('../executors/task-lifecycle');
@@ -24,6 +25,7 @@ function harness(t,file,options={}) {
   if(name==='./executors/task-metadata')return require('../executors/task-metadata');
   if(name==='./executors/groq')return options.modules?.[name]||require('../executors/groq');
   if(name==='./executors/local-openai')return options.modules?.[name]||require('../executors/local-openai');
+  if(name==='./executors/local')return options.modules?.[name]||require('../executors/local');
   if(name==='./executors/antigravity')return options.modules?.[name]||require('../executors/antigravity');
   if(name==='./executors/codex')return require('../executors/codex');
   if(name==='./task-progress')return require('../task-progress');
