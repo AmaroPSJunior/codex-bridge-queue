@@ -1,4 +1,4 @@
 {
   "version": 1,
-  "deterministic_only": true
+  "deterministic_only": false
 }
