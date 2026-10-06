@@ -59,9 +59,11 @@ function executeCommand(payload,{cwd,env=process.env,signal,progress,spawnFn=spa
   }
   function abort(){stop('cancelled');}
   if(signal?.aborted){abort();return;}
-  const bin=path.dirname(process.execPath);
+  const bins=[path.dirname(process.execPath),env.PREFIX?path.join(env.PREFIX,'bin'):null,'/usr/bin','/bin'].filter(Boolean);
+  const executable=bins.map(bin=>path.join(bin,spec.command)).find(file=>{try{return fs.statSync(file).isFile();}catch{return false;}});
   const args=spec.args;
-  try{child=spawnFn(path.join(bin,spec.command),args,{cwd:dir,shell:false,stdio:['ignore','pipe','pipe'],env:{PATH:bin,LANG:'C.UTF-8'}});}catch{reason='unavailable';void finish(null,true);return;}
+  if(!executable){reason='unavailable';void finish(null,true);return;}
+  try{child=spawnFn(executable,args,{cwd:dir,shell:false,stdio:['ignore','pipe','pipe'],env:{PATH:path.dirname(executable),LANG:'C.UTF-8'}});}catch{reason='unavailable';void finish(null,true);return;}
   for(const stream of ['stdout','stderr'])child[stream].on('data',chunk=>{
    if(settled||reason)return;size+=Buffer.byteLength(chunk);
    if(size>MAX_OUTPUT){pending.stdout=pending.stderr='';emit('stderr','[saída excedeu limite; restante omitido]');stop('output_limit');return;}
