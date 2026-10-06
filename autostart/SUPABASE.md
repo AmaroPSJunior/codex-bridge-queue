@@ -65,3 +65,7 @@ restart drenado. Um pedido de restart durante uma tarefa aguarda resultado
 publicado, recibos reconciliados e workspace liberado; não encerre esse worker à força.
 Para reverter, remova os dois padrões adicionados no launcher e worker, ou selecione
 outro perfil restrito provisionado pelo operador via variável de ambiente.
+
+## Recuperação automática do worker
+
+O supervisor mantém o lock exclusivo e, quando o worker encerra fora de uma transição de controle, tenta iniciá-lo novamente com backoff e orçamento limitado. Uma execução estável por pelo menos 60 segundos zera o contador. Após três falhas consecutivas, registra worker_restart_budget_exhausted e encerra para evitar loop infinito.

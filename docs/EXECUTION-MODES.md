@@ -1,4 +1,4 @@
-# Dois modos: pedir à IA ou executar um comando pronto
+# Três modos: agent, command e plan
 
 O modo **agent** continua sendo o padrão: a IA analisa o pedido e executa a tarefa.
 O modo **command** executa uma operação previamente permitida no Termux, sem chamar
@@ -92,3 +92,9 @@ novo contrato. O worker de produção não foi reiniciado durante a implementaç
 cancelamento, saída limitada, sanitização e isolamento de providers. O teste SQL
 opcional `node tests/command-sql.cjs` usa somente PGlite descartável quando disponível;
 não conecta ao Supabase. Não há fallback automático de command para agent.
+
+## Modo plan (Autopilot determinístico)
+
+O modo `plan` usa `plan_payload` no Supabase e executa etapas validadas em ordem, sem provider de IA. A gramática é fechada: `write_file`, `delete_file` e `run_command`. Caminhos absolutos, traversal, symlinks e arquivos sensíveis são recusados. `run_command` continua sujeito à política `safe-command`.
+
+A política aceita retry limitado a 3, checkpoint privado, resume e rollback de arquivos alterados. O resultado estruturado fica em `plan_result`, incluindo tentativas, `resumed` e `rolled_back`. O supervisor também possui reinício automático limitado e para ao esgotar o orçamento, evitando crash loop.

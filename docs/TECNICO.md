@@ -235,3 +235,7 @@ A execução precisa terminar com liberação segura do workspace e passar em `n
 `task-git.js` continua disponível como API legada, incluindo o formato de mensagem `task(N): título`; o worker não chama os dois mecanismos. `database/task-git.sql` é preservada, sem aplicação automática. `git_status`, `commit_sha` e `git_files` só entram na publicação quando a linha já oferece essas colunas.
 
 A dependência experimental OpenCode foi retirada do worker: não era selecionável pelo contrato atual e repassava o ambiente completo. O arquivo experimental local não é publicado; OpenCode não é um provider habilitado.
+
+## Autopilot determinístico (plan)
+
+O modo plan usa plan_payload validado por executors/plan.js. O executor mantém gramática fechada, checkpoints privados, resume, retry limitado e rollback de arquivos. O plano não passa por providers de IA. O worker publica plan_result e o receipt durável aceita esse campo. O supervisor reinicia um worker encerrado com backoff e orçamento máximo; ao esgotar tentativas, registra worker_restart_budget_exhausted e para.

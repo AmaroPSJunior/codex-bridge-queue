@@ -1,4 +1,4 @@
-<!-- Gerado por npm run docs:generate; não editar. Fonte: docs/model.json. SHA256: 425f1ec3a4448f8762a850b455f340bf40188b06038150cda28294a918cbffb2 -->
+<!-- Gerado por npm run docs:generate; não editar. Fonte: docs/model.json. SHA256: b6f66cd7badd62036d2d27eef7bc22c5402e5807b28cb1b3488a267e1216a5ea -->
 # Sua ponte entre ChatGPT e o Termux
 
 Uma explicação prática, sem precisar conhecer programação.
@@ -72,7 +72,7 @@ As credenciais são como a chave de uma caixa de correio: não devem ir nos pedi
 
 # Como usar no dia a dia?
 
-Ao abrir uma sessão interativa do Bash no Termux, o launcher (programa iniciador) do Supabase verifica se já existe um worker (programa que busca pedidos). Se existir, preserva-o; caso contrário, inicia um em segundo plano. Para GitHub, use os comandos remote ou o script opcional do Termux:Boot. O celular precisa continuar ligado e permitir execução do Termux em segundo plano.
+Ao abrir uma sessão interativa do Bash no Termux, o launcher do Supabase verifica se já existe um worker. Se existir, preserva-o; caso contrário, inicia um em segundo plano. O supervisor acompanha o worker e tenta reiniciá-lo automaticamente quando ele encerra inesperadamente, com orçamento limitado de tentativas para evitar loop infinito. Para GitHub, use os comandos remote ou o script opcional do Termux:Boot. O celular precisa continuar ligado e permitir execução do Termux em segundo plano.
 
 ---
 
@@ -84,13 +84,13 @@ O auto-commit Git do worker Supabase é opcional e desligado por padrão. Só oc
 
 # Quando algo demora ou falha
 
-Primeiro confira rede, estado do worker e autenticação. Não envie novamente uma ação só porque a resposta demorou: o Codex pode continuar trabalhando. Um pedido uncertain no GitHub ou running parado no Supabase exige conferir o que ocorreu antes de decidir reenviar. O prazo da ponte com Codex é de 15 minutos por padrão, ajustável na configuração, mas esse prazo não desfaz ações já iniciadas.
+Primeiro confira rede, estado do worker e autenticação. Não envie novamente uma ação só porque a resposta demorou. No modo plan, etapas determinísticas podem usar retry limitado, checkpoint, resume e rollback de arquivos alterados; falhas que ultrapassam essa política continuam visíveis para diagnóstico e replanejamento. Um pedido uncertain no GitHub ou running parado no Supabase exige conferir o que ocorreu antes de decidir reenviar.
 
 ---
 
 # Como sabemos que funciona?
 
-A suíte offline usa caixas de entrada e executores de mentira, em diretórios temporários. Ela verifica respostas, falhas, travas contra duplicação e inicialização automática sem chamar o Codex real. Os smoke tests (verificações rápidas) são separados: quando solicitados explicitamente, apenas leem os serviços; não criam nem executam tarefas.
+A suíte offline verifica respostas, falhas, travas contra duplicação, inicialização automática e o Autopilot determinístico: retry, rollback, checkpoint, resume e bypass de providers. Smoke tests separados validam a integração real quando solicitados explicitamente.
 
 ---
 
@@ -114,7 +114,7 @@ O texto e os slides vêm da mesma fonte versionada, docs/model.json. O gerador c
 
 # Quando não precisa de IA
 
-O modo agent continua usando a IA para analisar o pedido. No modo command, um comando estruturado e previamente permitido é executado diretamente pelo Termux, sem chamar modelo. Texto solto nunca vira comando automático. A ativação requer atualizar o banco e o worker; as primeiras operações são consultar diretório e listar arquivos.
+O modo agent continua usando IA para analisar o pedido. O modo command executa uma operação pequena e previamente permitida. O modo plan executa uma sequência estruturada sem chamar Codex, Groq, Qwen ou Antigravity: pode escrever ou apagar arquivos permitidos e executar comandos pela política safe-command, com retry limitado, checkpoint, resume e rollback. Texto solto nunca vira comando automático; o plano precisa ser criado e validado explicitamente.
 
 ---
 

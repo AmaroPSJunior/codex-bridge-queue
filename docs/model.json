@@ -38,7 +38,12 @@
     "dashboard/index.html",
     "dashboard/public-config.json",
     "dashboard/shared.mjs",
-    "dashboard/styles.css"
+    "dashboard/styles.css",
+    "executors/plan.js",
+    "executors/safe-command.js",
+    "executors/result-receipt.js",
+    "database/add-plan-execution-mode.sql",
+    "tests/autopilot-plan.test.cjs"
   ],
   "contracts": {
     "remote-worker.js": [
@@ -56,7 +61,8 @@
       "status:'running'",
       "status:finalStatus",
       "'cancelled':'failed'",
-      "shell:false"
+      "shell:false",
+      "executionMode:'plan'"
     ],
     "bridge.js": [
       "900000",
@@ -69,7 +75,8 @@
       "LOCK_NB",
       "start_new_session=True",
       "0o600",
-      "0o700"
+      "0o700",
+      "worker_restart_budget_exhausted"
     ],
     "autostart/install-supabase-autostart.py": [
       "# BEGIN codex-bridge supabase autostart",
@@ -95,6 +102,18 @@
       "bridge_create_task",
       "bridge_get_task",
       "bridge_list_tasks"
+    ],
+    "executors/plan.js": [
+      "const MAX_RETRIES=3;",
+      "rollback_on_failure",
+      "checkpoint",
+      "resume",
+      "rolled_back"
+    ],
+    "database/add-plan-execution-mode.sql": [
+      "execution_mode IN ('agent','command','plan')",
+      "plan_payload jsonb",
+      "plan_result jsonb"
     ]
   },
   "transports": [
@@ -161,7 +180,7 @@
     },
     {
       "title": "Como usar no dia a dia?",
-      "text": "Ao abrir uma sessão interativa do Bash no Termux, o launcher (programa iniciador) do Supabase verifica se já existe um worker (programa que busca pedidos). Se existir, preserva-o; caso contrário, inicia um em segundo plano. Para GitHub, use os comandos remote ou o script opcional do Termux:Boot. O celular precisa continuar ligado e permitir execução do Termux em segundo plano."
+      "text": "Ao abrir uma sessão interativa do Bash no Termux, o launcher do Supabase verifica se já existe um worker. Se existir, preserva-o; caso contrário, inicia um em segundo plano. O supervisor acompanha o worker e tenta reiniciá-lo automaticamente quando ele encerra inesperadamente, com orçamento limitado de tentativas para evitar loop infinito. Para GitHub, use os comandos remote ou o script opcional do Termux:Boot. O celular precisa continuar ligado e permitir execução do Termux em segundo plano."
     },
     {
       "title": "Como funciona o commit automático?",
@@ -169,11 +188,11 @@
     },
     {
       "title": "Quando algo demora ou falha",
-      "text": "Primeiro confira rede, estado do worker e autenticação. Não envie novamente uma ação só porque a resposta demorou: o Codex pode continuar trabalhando. Um pedido uncertain no GitHub ou running parado no Supabase exige conferir o que ocorreu antes de decidir reenviar. O prazo da ponte com Codex é de 15 minutos por padrão, ajustável na configuração, mas esse prazo não desfaz ações já iniciadas."
+      "text": "Primeiro confira rede, estado do worker e autenticação. Não envie novamente uma ação só porque a resposta demorou. No modo plan, etapas determinísticas podem usar retry limitado, checkpoint, resume e rollback de arquivos alterados; falhas que ultrapassam essa política continuam visíveis para diagnóstico e replanejamento. Um pedido uncertain no GitHub ou running parado no Supabase exige conferir o que ocorreu antes de decidir reenviar."
     },
     {
       "title": "Como sabemos que funciona?",
-      "text": "A suíte offline usa caixas de entrada e executores de mentira, em diretórios temporários. Ela verifica respostas, falhas, travas contra duplicação e inicialização automática sem chamar o Codex real. Os smoke tests (verificações rápidas) são separados: quando solicitados explicitamente, apenas leem os serviços; não criam nem executam tarefas."
+      "text": "A suíte offline verifica respostas, falhas, travas contra duplicação, inicialização automática e o Autopilot determinístico: retry, rollback, checkpoint, resume e bypass de providers. Smoke tests separados validam a integração real quando solicitados explicitamente."
     },
     {
       "title": "Como acompanhar enquanto trabalha?",
@@ -189,7 +208,7 @@
     },
     {
       "title": "Quando não precisa de IA",
-      "text": "O modo agent continua usando a IA para analisar o pedido. No modo command, um comando estruturado e previamente permitido é executado diretamente pelo Termux, sem chamar modelo. Texto solto nunca vira comando automático. A ativação requer atualizar o banco e o worker; as primeiras operações são consultar diretório e listar arquivos."
+      "text": "O modo agent continua usando IA para analisar o pedido. O modo command executa uma operação pequena e previamente permitida. O modo plan executa uma sequência estruturada sem chamar Codex, Groq, Qwen ou Antigravity: pode escrever ou apagar arquivos permitidos e executar comandos pela política safe-command, com retry limitado, checkpoint, resume e rollback. Texto solto nunca vira comando automático; o plano precisa ser criado e validado explicitamente."
     }
   ],
   "presentation": {
