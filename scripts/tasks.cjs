@@ -44,10 +44,13 @@ function payload(input,transport){
  if(transport==='supabase'&&!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(id))throw Error('UUID required');
  if(transport==='github'&&!/^[A-Za-z0-9][A-Za-z0-9._-]{7,99}$/.test(id))throw Error('Invalid task_id');
  const title=shortTitle(input.title??input.task_name,transport==='github'?'Tarefa sem título':inferTitle(prompt));
+ const projectId=input.project_id??input.projectId;
+ if(transport==='supabase'&&!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(projectId||''))throw Error('project_id UUID required');
  return transport==='github'
   ? {title,labels:['codex:queued'],body:JSON.stringify({protocol:'codex-bridge/v1',task_id:id,title,prompt})}
   : {
      id,
+     project_id:projectId,
      title,
      instruction:prompt,
      status:'queued',
