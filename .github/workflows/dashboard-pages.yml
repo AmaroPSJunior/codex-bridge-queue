@@ -10,6 +10,8 @@ on:
       - task-display.js
       - task-progress.js
       - tests/dashboard-browser.cjs
+      - tests/dashboard-auth.test.cjs
+      - tests/dashboard.test.cjs
       - .github/workflows/dashboard-pages.yml
       - .github/workflows/docs-sync.yml
       - README.md
