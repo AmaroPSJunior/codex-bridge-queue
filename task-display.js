@@ -18,7 +18,7 @@ function displayTask(task={},transport='supabase') {
 function markdownLabel(task,transport='supabase') {
   return displayTask(task,transport).label.replace(/[\\`*_{}\[\]()<>#!|]/g,'\\$&');
 }
-const STATUS_PT=Object.freeze({queued:'na fila',running:'em execução',succeeded:'concluída',failed:'falhou',cancelled:'cancelada',uncertain:'resultado incerto',duplicate:'duplicada',rejected:'rejeitada'});
+const STATUS_PT=Object.freeze({queued:'na fila',paused:'pausada',running:'em execução',succeeded:'concluída',failed:'falhou',cancelled:'cancelada',uncertain:'resultado incerto',duplicate:'duplicada',rejected:'rejeitada'});
 function statusLabel(status){return Object.hasOwn(STATUS_PT,status)?STATUS_PT[status]:'estado desconhecido';}
 function inferTitle(instruction,number=null){
   const text=typeof instruction==='string'?instruction.toLowerCase():'';
