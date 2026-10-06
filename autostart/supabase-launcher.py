@@ -83,6 +83,8 @@ def credential():
 def supervise(lock_fd):
     validate_lock(lock_fd)
     env = os.environ.copy()
+    # Production queue is deterministic-only: provider/agent execution is paused.
+    env['CODEX_BRIDGE_DETERMINISTIC_ONLY'] = '1'
     # Operator-provisioned named profile; app-server rejects missing profiles.
     env['CODEX_BRIDGE_PERMISSIONS_PROFILE'] = env.get('CODEX_BRIDGE_PERMISSIONS_PROFILE') or 'bridge-git'
     env['GROQ_MODE'] = env.get('GROQ_MODE') or 'agent'

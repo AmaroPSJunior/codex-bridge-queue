@@ -152,7 +152,7 @@
     },
     {
       "title": "O caminho do pedido",
-      "text": "Você fala com ChatGPT → a tarefa vai por GitHub ou Supabase → Termux recebe → Codex executa → a resposta volta pelo mesmo caminho → ChatGPT apresenta. O Termux consulta a caixa de entrada de tempos em tempos; por isso, a resposta pode não ser imediata. Não é necessário abrir uma porta do celular para a internet. A meta é o resultado retornar automaticamente ao ChatGPT. Hoje a integração precisa consultar o serviço; uma notificação espontânea no ChatGPT não está implementada nem confirmada."
+      "text": "Você fala com ChatGPT → a tarefa estruturada vai pelo Supabase → o Termux recebe → o executor determinístico executa command ou plan → o resultado volta pela mesma fila → ChatGPT apresenta. O fluxo de produção atual não depende de Qwen, Groq, Antigravity ou outro provider de IA para executar a tarefa. O celular continua sem precisar abrir uma porta para a internet."
     },
     {
       "title": "Um exemplo simples",
@@ -208,7 +208,7 @@
     },
     {
       "title": "Quando não precisa de IA",
-      "text": "O modo agent continua usando IA para analisar o pedido. O modo command executa uma operação pequena e previamente permitida. O modo plan executa uma sequência estruturada sem chamar Codex, Groq, Qwen ou Antigravity: pode escrever ou apagar arquivos permitidos e executar comandos pela política safe-command, com retry limitado, checkpoint, resume e rollback. Texto solto nunca vira comando automático; o plano precisa ser criado e validado explicitamente."
+      "text": "O padrão de produção atual é determinístico: tarefas operacionais usam command ou plan no próprio Termux, sem chamar Codex, Groq, Qwen ou Antigravity. O modo agent permanece no código apenas para compatibilidade e testes, mas o launcher de produção o bloqueia. O modo plan executa uma sequência estruturada, com retry limitado, checkpoint, resume e rollback; texto solto nunca vira comando automático."
     }
   ],
   "presentation": {

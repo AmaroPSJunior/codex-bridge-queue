@@ -64,3 +64,10 @@ test('worker command cancellation publishes cancelled and final flush',async t=>
  let body,stage;const h=harness(t,'supabase-worker.js',{modules:{'./executors/plan':{executePlan:async()=>{throw Error('plan must not run');}}},fetch:async(u,o)=>{body=JSON.parse(o.body);return {ok:true,text:async()=>''};}});
  h.set('progress',{close:async s=>{stage=s;}});h.set('r',{code:1,executionMode:'command',stdout:JSON.stringify({status:'cancelled',answer:'',error:'cancelled'})});await h.run("finish({id:'task',execution_mode:'command'},r,progress)");assert.equal(body.status,'cancelled');assert.equal(stage,'cancelled');
 });
+
+test('deterministic-only production gate rejects agent before any provider starts',async t=>{
+ const h=harness(t,'supabase-worker.js',{env:{CODEX_BRIDGE_DETERMINISTIC_ONLY:'1',AI_PROVIDER:'codex'}});
+ const r=await h.run("execute('must not reach provider',{id:'task',execution_mode:'agent'})");
+ assert.equal(r.code,1);assert.equal(r.executionMode,'agent');assert.equal(h.calls.length,0);
+ assert.match(JSON.parse(r.stdout).error,/agent desativado/);
+});

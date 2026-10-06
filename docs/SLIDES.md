@@ -1,4 +1,4 @@
-<!-- Gerado por npm run docs:generate; não editar. Fonte: docs/model.json. SHA256: 4850880161c40ba364f076377a3002fd15d8175f6284ebb0a3edf5c9f1650342 -->
+<!-- Gerado por npm run docs:generate; não editar. Fonte: docs/model.json. SHA256: a0fceefa040efa5774ceb14780e2f4a13a6631e9c85fa31fb080475f8c908b50 -->
 # Sua ponte entre ChatGPT e o Termux
 
 Uma explicação prática, sem precisar conhecer programação.
@@ -30,7 +30,7 @@ Você quer pedir algo pelo ChatGPT e receber a resposta do Codex que está no se
 
 # O caminho do pedido
 
-Você fala com ChatGPT → a tarefa vai por GitHub ou Supabase → Termux recebe → Codex executa → a resposta volta pelo mesmo caminho → ChatGPT apresenta. O Termux consulta a caixa de entrada de tempos em tempos; por isso, a resposta pode não ser imediata. Não é necessário abrir uma porta do celular para a internet. A meta é o resultado retornar automaticamente ao ChatGPT. Hoje a integração precisa consultar o serviço; uma notificação espontânea no ChatGPT não está implementada nem confirmada.
+Você fala com ChatGPT → a tarefa estruturada vai pelo Supabase → o Termux recebe → o executor determinístico executa command ou plan → o resultado volta pela mesma fila → ChatGPT apresenta. O fluxo de produção atual não depende de Qwen, Groq, Antigravity ou outro provider de IA para executar a tarefa. O celular continua sem precisar abrir uma porta para a internet.
 
 ---
 
@@ -114,7 +114,7 @@ O texto e os slides vêm da mesma fonte versionada, docs/model.json. O gerador c
 
 # Quando não precisa de IA
 
-O modo agent continua usando IA para analisar o pedido. O modo command executa uma operação pequena e previamente permitida. O modo plan executa uma sequência estruturada sem chamar Codex, Groq, Qwen ou Antigravity: pode escrever ou apagar arquivos permitidos e executar comandos pela política safe-command, com retry limitado, checkpoint, resume e rollback. Texto solto nunca vira comando automático; o plano precisa ser criado e validado explicitamente.
+O padrão de produção atual é determinístico: tarefas operacionais usam command ou plan no próprio Termux, sem chamar Codex, Groq, Qwen ou Antigravity. O modo agent permanece no código apenas para compatibilidade e testes, mas o launcher de produção o bloqueia. O modo plan executa uma sequência estruturada, com retry limitado, checkpoint, resume e rollback; texto solto nunca vira comando automático.
 
 ---
 

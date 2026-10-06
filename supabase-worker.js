@@ -193,6 +193,7 @@ function execute(prompt,task={},progress){
     return run;
   }
 
+  if(process.env.CODEX_BRIDGE_DETERMINISTIC_ONLY==='1')return Promise.resolve({code:1,executionMode:'agent',stdout:JSON.stringify({status:'failed',answer:'',error:'Modo agent desativado; use command ou plan.',workspaceReleased:true}),stderr:''});
   const controlRun=workerControl.control(STATE,prompt,task);if(controlRun)return Promise.resolve(controlRun);
   let selected;
   try{
