@@ -1,4 +1,5 @@
 name: Dashboard Pages
+# Playwright visual smoke is part of every dashboard release.
 on:
   workflow_dispatch:
   push:
