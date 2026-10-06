@@ -9,6 +9,7 @@ on:
       - scripts/dashboard-build.cjs
       - task-display.js
       - task-progress.js
+      - tests/dashboard-browser.cjs
       - .github/workflows/dashboard-pages.yml
       - .github/workflows/docs-sync.yml
       - README.md
