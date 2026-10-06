@@ -1,4 +1,4 @@
-<!-- Gerado por npm run docs:generate; não editar. Fonte: docs/model.json. SHA256: 969462f168a95937c560fc6cbb3a2691dbd4614632c0ea239d4f69e5fc87a1fe -->
+<!-- Gerado por npm run docs:generate; não editar. Fonte: docs/model.json. SHA256: 33c613e4c586fad6d390f9c1108a2a584a89ca0e3ed269da6c499b3654743081 -->
 # Sua ponte entre ChatGPT e o Termux
 
 Uma explicação prática, sem precisar conhecer programação.
