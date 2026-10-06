@@ -27,3 +27,26 @@ export function taskActivity(task,now=Date.now(),connection='live'){
  if(age>=120)return {level:'attention',text:'◷ Sem novidades recentes — a tarefa pode continuar trabalhando',since};
  return {level:'normal',text:'● Atividade recente',since};
 }
+
+export function canDeleteTask(task,mode='live'){return mode==='live'&&task?.status!=='running';}
+export function confirmTaskDeletion(confirmFn,task,mode,labelFn){
+ if(!canDeleteTask(task,mode))return false;
+ return !!confirmFn('Excluir '+labelFn(task)+'? Esta ação não pode ser desfeita.');
+}
+export function removeTaskRows(rows,id){return rows.filter(row=>row.id!==id);}
+export function queuePageArgs({status='all',search='',cursor=null,limit=12}={}){
+ return {p_limit:limit+1,p_status:status==='all'?null:status,p_query:search||null,p_before_created:cursor?.created_at||null,p_before_id:cursor?.id||null};
+}
+export function queuePageResult(rows=[],limit=12){
+ const visible=rows.slice(0,limit);
+ return {rows:visible,hasNext:rows.length>limit,nextCursor:visible.length?{created_at:visible.at(-1).created_at,id:visible.at(-1).id}:null};
+}
+export function buildReleaseState(runs=[]){
+ const pages=runs.find(r=>r.name==='Dashboard Pages');
+ if(!pages)return {status:'hidden',sha:null};
+ const names=new Set(['Dashboard Pages','Bridge tests','Playwright Visual Smoke','Sync generated docs']);
+ const group=runs.filter(r=>r.head_sha===pages.head_sha&&names.has(r.name));
+ if(group.some(r=>['queued','in_progress','pending','waiting','requested'].includes(r.status)))return {status:'running',sha:pages.head_sha};
+ if(group.some(r=>['failure','timed_out','action_required','startup_failure','stale'].includes(r.conclusion)))return {status:'failed',sha:pages.head_sha};
+ return {status:'success',sha:pages.head_sha};
+}
