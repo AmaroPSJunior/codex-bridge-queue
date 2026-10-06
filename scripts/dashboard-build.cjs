@@ -31,9 +31,19 @@ async function build(){
  if(fs.readFileSync(path.join(dir,'shared.mjs'),'utf8')!==generated())throw Error('Dashboard contract stale');
  fs.mkdirSync(out,{recursive:true});
  for(const name of names)fs.copyFileSync(path.join(dir,name),path.join(out,name));
- const appVersion=require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(dir,'app.mjs'))).digest('hex').slice(0,12);
+ const crypto=require('node:crypto');
+ const releaseVersion=crypto.createHash('sha256').update(names.map(name=>fs.readFileSync(path.join(dir,name))).join('')).digest('hex').slice(0,12);
+ // GitHub Pages/browser caches module dependencies independently. Version every local
+ // module import with the same release id so app/core/data/shared can never mix releases.
+ for(const name of names.filter(name=>name.endsWith('.mjs'))){
+  const target=path.join(out,name);
+  const source=fs.readFileSync(target,'utf8').replace(/(from\s+['"])(\.\/[^'"]+\.mjs)(['"])/g,(_,a,s,b)=>a+s+'?v='+releaseVersion+b);
+  fs.writeFileSync(target,source);
+ }
  const indexPath=path.join(out,'index.html');
- fs.writeFileSync(indexPath,fs.readFileSync(indexPath,'utf8').replace('./app.mjs','./app.mjs?v='+appVersion));
+ fs.writeFileSync(indexPath,fs.readFileSync(indexPath,'utf8')
+  .replace('./app.mjs','./app.mjs?v='+releaseVersion)
+  .replace('./styles.css','./styles.css?v='+releaseVersion));
  fs.writeFileSync(path.join(out,'public-config.json'),JSON.stringify(publicConfig,null,2)+'\n');
  if(snapshot)fs.writeFileSync(path.join(out,'public-summary.json'),JSON.stringify(snapshot)+'\n');
  else if(fs.existsSync(path.join(out,'public-summary.json')))fs.unlinkSync(path.join(out,'public-summary.json'));
