@@ -2,7 +2,7 @@
 // Also covers relaunch by an already-running supervisor with an older environment.
 // This selects the operator-defined profile; it never edits sandbox permissions.
 process.env.CODEX_BRIDGE_PERMISSIONS_PROFILE ||= 'bridge-git';
-const fs=require('fs'),path=require('path'),{spawn}=require('child_process');
+const fs=require('fs'),path=require('path'),{spawn,spawnSync}=require('child_process');
 const workerControl=require('./executors/worker-control');
 const {mode:executionMode,executeCommand}=require('./executors/command');
 const {executePlan}=require('./executors/plan');
@@ -38,6 +38,34 @@ async function request(route,options={}){
 async function next(){
   const rows=await request('bridge_tasks?status=eq.queued&select=*&order=created_at.asc&limit=1');
   return rows?.[0]||null;
+}
+async function nextProjectProvision(){
+  const rows=await request('bridge_projects?github_enabled=eq.true&github_status=eq.provisioning&select=*&order=created_at.asc&limit=1');
+  return rows?.[0]||null;
+}
+async function provisionProject(project){
+  const endpoint='user/repos';
+  const body={name:project.github_repo_name,private:project.github_visibility!=='public',auto_init:true,description:project.description||''};
+  const gh=spawnSync('gh',['api','--hostname','github.com',endpoint,'--method','POST','--input','-'],{
+    input:JSON.stringify(body),encoding:'utf8',timeout:30000,shell:false
+  });
+  if(gh.error||gh.status!==0){
+    await request('bridge_projects?id=eq.'+encodeURIComponent(project.id)+'&github_status=eq.provisioning',{
+      method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({github_status:'failed',github_error:'Não foi possível criar o repositório GitHub.',updated_at:new Date().toISOString()})
+    });
+    log('project_github_failed',{projectId:project.id});
+    return false;
+  }
+  let repo;try{repo=JSON.parse(gh.stdout);}catch{}
+  if(!repo?.full_name||!repo?.html_url)throw Error('GitHub repository response invalid');
+  await request('bridge_projects?id=eq.'+encodeURIComponent(project.id)+'&github_status=eq.provisioning',{
+    method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({
+      github_status:'linked',github_repo_full_name:repo.full_name,github_url:repo.html_url,
+      github_branch:repo.default_branch||'main',github_linked_at:new Date().toISOString(),github_error:null,updated_at:new Date().toISOString()
+    })
+  });
+  log('project_github_linked',{projectId:project.id,repository:repo.full_name});
+  return true;
 }
 async function claim(task){
   const rows=await request('bridge_tasks?id=eq.'+encodeURIComponent(task.id)+'&status=eq.queued',{
@@ -311,6 +339,8 @@ async function main(){
       if(workerControl.checkpoint(STATE,DIR,process.pid)){
         await new Promise(resolve=>{const t=setTimeout(resolve,1000);wake=()=>{clearTimeout(t);resolve();};});continue;
       }
+      const project=await nextProjectProvision();
+      if(project){await provisionProject(project);continue;}
       const task=await next();
       if(process.env.BRIDGE_SUPERVISOR_GENERATION)workerControl.save(path.join(STATE,'control','boot.json'),{pid:process.pid,generation:process.env.BRIDGE_SUPERVISOR_GENERATION});
       if(task){
