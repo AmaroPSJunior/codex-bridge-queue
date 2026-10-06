@@ -71,3 +71,10 @@ test('dashboard requires project selection before authenticated content',()=>{
  assert.ok(data.includes('bridge_dashboard_project_list'));
  assert.ok(data.includes('bridge_dashboard_project_stats'));
 });
+
+test('dashboard refresh keeps selected project and project switch opens chooser',()=>{
+ const app=fs.readFileSync(path.join(root,'dashboard/app.mjs'),'utf8');
+ assert.ok(app.includes("$('#refresh').onclick=()=>void refresh();"));
+ assert.ok(app.includes("$('#project-switch').onclick=()=>showProjectChooser();"));
+ assert.ok(!app.includes("$('#refresh').onclick=()=>{if(state.mode==='live')showProjectChooser()"));
+});
