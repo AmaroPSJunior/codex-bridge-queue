@@ -31,6 +31,9 @@ async function build(){
  if(fs.readFileSync(path.join(dir,'shared.mjs'),'utf8')!==generated())throw Error('Dashboard contract stale');
  fs.mkdirSync(out,{recursive:true});
  for(const name of names)fs.copyFileSync(path.join(dir,name),path.join(out,name));
+ const appVersion=require('node:crypto').createHash('sha256').update(fs.readFileSync(path.join(dir,'app.mjs'))).digest('hex').slice(0,12);
+ const indexPath=path.join(out,'index.html');
+ fs.writeFileSync(indexPath,fs.readFileSync(indexPath,'utf8').replace('./app.mjs','./app.mjs?v='+appVersion));
  fs.writeFileSync(path.join(out,'public-config.json'),JSON.stringify(publicConfig,null,2)+'\n');
  if(snapshot)fs.writeFileSync(path.join(out,'public-summary.json'),JSON.stringify(snapshot)+'\n');
  else if(fs.existsSync(path.join(out,'public-summary.json')))fs.unlinkSync(path.join(out,'public-summary.json'));
