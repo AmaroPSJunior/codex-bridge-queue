@@ -91,7 +91,7 @@ function showProjectChooser(){
  void source.projects().then(p=>{state.projects=p||[];draw();}).catch(()=>{err.textContent='Não foi possível atualizar os projetos.';});
 }
 window.addEventListener('hashchange',()=>{state.route=location.hash.slice(1) in routes?location.hash.slice(1):'overview';if(state.route==='history'&&!['all','succeeded','failed','cancelled'].includes(state.status))state.status='all';render();if(state.mode==='live'&&!state.selectedProject&&state.route!=='projects'){showProjectChooser();return;}void refreshRoute();});
-$('#refresh').onclick=()=>{if(state.mode==='live')showProjectChooser();else void refresh();};
+$('#refresh').onclick=()=>void refresh();
 $('#project-switch').onclick=()=>showProjectChooser();
 $('#login-form').onsubmit=async ev=>{ev.preventDefault();const fd=new FormData(ev.currentTarget),err=$('#login-error');err.textContent='';try{await source.login(fd.get('email'),fd.get('password'));$('#login-dialog').close();try{state.projects=await source.projects();}catch{}await source.subscribe();state.connection='live';$('#notice').hidden=true;render();showProjectChooser();}catch(x){err.textContent=x.message;}};
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>b.closest('dialog').close());
