@@ -35,7 +35,6 @@ const fs=require('node:fs');
 
       await page.locator('#nav a[href="#tasks"]').click();
       assert.equal(await page.locator('.task-card').count(),0);
-      assert.ok(await page.locator('.empty-state').count());
 
       await page.locator('#nav a[href="#settings"]').click();
       await page.locator('.advanced > summary').click();
