@@ -12,6 +12,7 @@ on:
       - tests/dashboard-browser.cjs
       - tests/dashboard-auth.test.cjs
       - tests/dashboard.test.cjs
+      - tests/dashboard-realtime.test.cjs
       - .github/workflows/dashboard-pages.yml
       - .github/workflows/docs-sync.yml
       - README.md
