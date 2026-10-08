@@ -90,3 +90,10 @@
  .top-actions .refresh-button{flex:0 0 auto;min-width:0!important}
 }
 @media(max-width:420px){.topbar{padding:10px 12px}.top-actions .refresh-button span{display:none}.top-actions .refresh-button{min-width:40px!important;padding:8px!important}}
+
+/* Continuous left-to-right light sweep only while a task is running. */
+@keyframes task-progress-sweep{from{background-position:200% 0}to{background-position:-200% 0}}
+.mega-progress.live,.live-progress.active-progress,.mini-bar.active-progress,.detail-progress.active-progress progress{position:relative}
+.mega-progress.live progress::-webkit-progress-value,.live-progress.active-progress progress::-webkit-progress-value,.detail-progress.active-progress progress::-webkit-progress-value,.mini-bar.active-progress i{background:linear-gradient(105deg,#5868fd 0%,#66dbff 22%,#da78ff 48%,#64fbd2 74%,#5868fd 100%);background-size:250% 100%;animation:task-progress-sweep 2.4s linear infinite;box-shadow:0 0 14px #75b7ff77}
+.mega-progress.live progress::-moz-progress-bar,.live-progress.active-progress progress::-moz-progress-bar,.detail-progress.active-progress progress::-moz-progress-bar{background:linear-gradient(105deg,#5868fd,#66dbff,#da78ff,#64fbd2,#5868fd);background-size:250% 100%;animation:task-progress-sweep 2.4s linear infinite}
+@media(prefers-reduced-motion:reduce){.mega-progress.live progress::-webkit-progress-value,.mega-progress.live progress::-moz-progress-bar,.live-progress.active-progress progress::-webkit-progress-value,.live-progress.active-progress progress::-moz-progress-bar,.detail-progress.active-progress progress::-webkit-progress-value,.detail-progress.active-progress progress::-moz-progress-bar,.mini-bar.active-progress i{animation:none}}
