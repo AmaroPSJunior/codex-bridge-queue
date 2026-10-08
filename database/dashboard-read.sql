@@ -33,6 +33,7 @@ returns jsonb language sql immutable set search_path = '' as $$
  'status',p_row->>'status','created_at',p_row->>'created_at','claimed_at',p_row->>'claimed_at',
  'completed_at',p_row->>'completed_at','updated_at',p_row->>'updated_at',
  'progress_message',bridge_dashboard_private.bridge_dashboard_safe(p_row->>'progress_message',160),
+  'progress_percent',case when coalesce(p_row->>'progress_percent','') ~ '^[0-9]+$' then least(100,greatest(0,(p_row->>'progress_percent')::integer)) else null end,
  'progress_seq',coalesce(p_row->>'progress_seq','0'), 'last_progress_at',p_row->>'last_progress_at',
  'last_flush_reason',case when p_row->>'last_flush_reason' in ('lines','timeout','command_end','final') then p_row->>'last_flush_reason' else null end,
  'last_flush_line_count',p_row->'last_flush_line_count');

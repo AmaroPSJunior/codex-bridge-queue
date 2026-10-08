@@ -37,4 +37,4 @@ function taskSummary(task={},transport='supabase'){
 }
 export {shortTitle,taskNumber,displayTask,markdownLabel,STATUS_PT,statusLabel,inferTitle,taskSummary};
 
-export const LIMITS={"lines":500,"bytes":524288,"intervalMs":60000,"flushLines":30,"commandEnd":true};
+export const LIMITS={"lines":500,"bytes":524288,"intervalMs":1000,"flushLines":30,"commandEnd":true};

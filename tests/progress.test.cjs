@@ -9,13 +9,19 @@ function fixture(opts={}){
  async function advance(ms){time+=ms;for(const t of [...timers])if(t.at<=time){timers.delete(t);t.fn();}await tick();}
  return {p,writes,local,errors,timers,advance};
 }
-test('Progress flushes at 30 lines, not 29',async()=>{const f=fixture();for(let i=0;i<29;i++)f.p.line('line '+i);await f.advance(59999);assert.equal(f.writes.length,0);f.p.line('thirty');await tick();assert.equal(f.writes.length,1);assert.equal(f.p.snapshot().pending,0);await f.p.close();});
-test('Progress 60 seconds since last successful flush, not task start',async()=>{
- const f=fixture();await f.advance(30000);for(let i=0;i<30;i++)f.p.line('line');await tick();f.p.line('next');
- await f.advance(30000);assert.equal(f.writes.length,1);await f.advance(29999);assert.equal(f.writes.length,1);
- await f.advance(1);assert.equal(f.writes.length,2);assert.equal(f.p.snapshot().lastSuccess,90000);await f.p.close();
+test('Progress flushes at 30 lines, not 29',async()=>{const f=fixture();for(let i=0;i<29;i++)f.p.line('line '+i);await f.advance(999);assert.equal(f.writes.length,0);f.p.line('thirty');await tick();assert.equal(f.writes.length,1);assert.equal(f.p.snapshot().pending,0);await f.p.close();});
+test('Progress flushes one second after the last successful write',async()=>{
+ const f=fixture();for(let i=0;i<30;i++)f.p.line('line');await tick();f.p.line('next');
+ await f.advance(999);assert.equal(f.writes.length,1);await f.advance(1);
+ assert.equal(f.writes.length,2);assert.equal(f.p.snapshot().lastSuccess,1000);await f.p.close();
 });
-test('Progress flushes fewer than thirty at 60 seconds and has no idle writes',async()=>{const f=fixture();f.p.line('one');await f.advance(59999);assert.equal(f.writes.length,0);await f.advance(1);assert.equal(f.writes.length,1);await f.advance(120000);assert.equal(f.writes.length,1);await f.p.close();assert.equal(f.timers.size,0);});
+test('Progress flushes fewer than thirty after one second and has no idle writes',async()=>{const f=fixture();f.p.line('one');await f.advance(999);assert.equal(f.writes.length,0);await f.advance(1);assert.equal(f.writes.length,1);await f.advance(120000);assert.equal(f.writes.length,1);await f.p.close();assert.equal(f.timers.size,0);});
+test('Executor percentage advances by stages, never regresses, and is omitted for old schemas',async()=>{
+ const writes=[],p=createProgress({includePercent:true,write:async body=>writes.push(body)});p.setStage('command');p.line('starting');await p.flush('lines');
+ assert.equal(writes[0].progress_percent,60);p.setStage('running');p.line('more');await p.flush('lines');assert.equal(writes[1].progress_percent,60);
+ p.line('finishing');await p.close('succeeded');assert.equal(writes.at(-1).progress_percent,95);
+ const legacy=[];const old=createProgress({write:async body=>legacy.push(body)});old.line('legacy');await old.close();assert.equal('progress_percent' in legacy[0],false);
+});
 for(const stage of ['succeeded','failed','cancelled','shutdown'])test('Progress final flush '+stage,async()=>{const f=fixture();f.p.feed(Buffer.from('partial'));await f.p.close(stage);assert.equal(f.writes.length,1);assert.equal(f.writes[0].recent_output,'partial');assert.equal(f.timers.size,0);});
 test('Progress 500-line cap evicts oldest first; local log retains all',async()=>{const f=fixture();for(let i=0;i<550;i++){f.p.line('line '+i);assert.ok(f.p.snapshot().lines.length<=500);}await f.p.close('succeeded');const lines=f.writes.at(-1).recent_output.split('\n');assert.equal(lines.length,500);assert.equal(lines[0],'line 50');assert.equal(lines.at(-1),'line 549');assert.equal(f.local.length,550);});
 test('Progress cap measures serialized UTF8 with escaping, oldest first',async()=>{const f=fixture();for(let i=0;i<500;i++)f.p.line(String(i)+'😀\\"'.repeat(500));await f.p.close();const s=f.writes.at(-1).recent_output;assert.equal(MAX_BYTES,512*1024);for(const write of f.writes)assert.ok(Buffer.byteLength(JSON.stringify(write.recent_output))<=MAX_BYTES);assert.ok(Buffer.byteLength(JSON.stringify(s))<=MAX_BYTES);assert.ok(!s.startsWith('0'));assert.ok(s.includes('499'));});
@@ -29,8 +35,8 @@ test('Progress preserves UTF8 split bytes and isolates stdout/stderr fragments',
 test('Failed progress retains pending data and successful timestamp, retries without storm',async()=>{
  let fail=true;const calls=[];const f=fixture({write:async b=>{calls.push(b);if(fail)throw Error('do not expose this');}});
  for(let i=0;i<30;i++)f.p.line('line');await tick();assert.equal(f.p.snapshot().pending,30);assert.equal(f.p.snapshot().lastSuccess,0);
- for(let i=0;i<100;i++)f.p.line('more');await tick();assert.equal(calls.length,1);await f.advance(59999);assert.equal(calls.length,1);
- fail=false;await f.advance(1);assert.equal(calls.length,3);assert.equal(f.p.snapshot().lastSuccess,60000);assert.equal(f.p.snapshot().pending,0);assert.deepEqual(f.errors,['progress_publish_failed']);await f.p.close();
+ for(let i=0;i<100;i++)f.p.line('more');await tick();assert.equal(calls.length,1);await f.advance(999);assert.equal(calls.length,1);
+ fail=false;await f.advance(1);assert.equal(calls.length,3);assert.equal(f.p.snapshot().lastSuccess,1000);assert.equal(f.p.snapshot().pending,0);assert.deepEqual(f.errors,['progress_publish_failed']);await f.p.close();
 });
 test('Single flight retains arrivals during successful write and uses monotonic bigint sequence',async()=>{
  const pending=[],bodies=[];const f=fixture({initialSeq:'9007199254740993',write:b=>{bodies.push(b);return new Promise(r=>pending.push(r));}});
@@ -51,6 +57,19 @@ test('Worker progress PATCH uses exact sequence CAS and server timestamp with no
  let call;const h=harness(t,'supabase-worker.js',{fetch:async(u,o)=>{call={u,o};return {ok:true,text:async()=>JSON.stringify([{id:'1'}])};}});
  h.run("activeProgress=progressFor({id:'1',progress_seq:4,progress_message:null,recent_output:null,last_progress_at:null,last_flush_reason:null,last_flush_line_count:null});activeProgress.line('hello')");await h.run("activeProgress.close('succeeded')");
  assert.match(call.u,/status=eq.running/);assert.match(call.u,/progress_seq=eq.4/);assert.ok(call.o.signal);const body=JSON.parse(call.o.body);assert.equal(body.progress_seq,'5');assert.equal(body.last_progress_at,undefined);assert.equal(body.last_flush_reason,'final');assert.equal(body.last_flush_line_count,1);assert.equal(body.status,undefined);assert.equal(body.result,undefined);
+});
+test('Worker writes the executor percentage only when the task schema has that column',async t=>{
+ let call;const h=harness(t,'supabase-worker.js',{fetch:async(u,o)=>{call={u,o};return {ok:true,text:async()=>JSON.stringify([{id:'1'}])};}});
+ h.run("activeProgress=progressFor({id:'1',progress_seq:0,progress_message:null,recent_output:null,last_progress_at:null,last_flush_reason:null,last_flush_line_count:null,progress_percent:0});activeProgress.line('starting')");await h.run("activeProgress.flush('lines')");
+ await h.run("activeProgress.close('succeeded')");const body=JSON.parse(call.o.body);assert.equal(body.progress_percent,25);
+});
+test('Worker idempotently appends sanitized terminal events without patching them onto bridge_tasks',async t=>{
+ const calls=[];const h=harness(t,'supabase-worker.js',{fetch:async(u,o)=>{calls.push({u,o});return {ok:true,text:async()=>u.includes('bridge_task_terminal_events')?'':'[{"id":"1"}]'};}});
+ h.run("activeProgress=progressFor({id:'1',progress_seq:0,progress_message:null,recent_output:null,last_progress_at:null,last_flush_reason:null,last_flush_line_count:null});activeProgress.event('command_start',{command_key:'c1',command:'echo safe'})");
+ await h.run("activeProgress.close('succeeded')");
+ assert.match(calls[0].u,/bridge_task_terminal_events\?on_conflict=event_key/);assert.equal(calls[0].o.method,'POST');assert.match(calls[0].o.headers.Prefer,/ignore-duplicates/);
+ const events=JSON.parse(calls[0].o.body);assert.equal(events[0].task_id,'1');assert.equal(events[0].event_type,'command_start');assert.equal(events[0].command,'echo safe');
+ assert.match(calls[1].u,/bridge_tasks/);assert.equal(JSON.parse(calls[1].o.body).terminal_events,undefined);
 });
 test('Worker legacy schema records local output with no progress network requests',async t=>{const h=harness(t,'supabase-worker.js');h.run("activeProgress=progressFor({id:'legacy'});activeProgress.line('hello')");await h.run("activeProgress.close('succeeded')");assert.match(h.logs.join('\n'),/schema_pending/);assert.equal(fs.readdirSync(path.join(h.dir,'supabase-state/progress')).length,1);});
 test('Worker streams literal executor output into progress while preserving result JSON',async t=>{
@@ -76,6 +95,23 @@ test('Command with 3 lines immediately flushes on exit including unterminated fi
  await f.p.commandComplete(0,'cmd');assert.equal(f.writes.length,1);assert.equal(f.writes[0].recent_output,'first\nsecond\nthird');assert.equal(f.p.snapshot().pending,0);
  assert.deepEqual(f.local.slice(-2),['third\n','[command exit: 0]\n']);await f.p.close();assert.equal(f.writes.length,1);
 });
+test('Structured terminal stream persists command, sanitized output, and exit per task',async()=>{
+ const f=fixture({env:{API_TOKEN:'fixture-secret'}}),capture=commandStream(f.p),frame=e=>JSON.stringify({bridge_progress:1,...e})+'\n';
+ await capture.write(Buffer.from(frame({type:'start',id:'c1',command:'echo safe'})+
+  frame({type:'data',id:'c1',text:'Authorization: Bearer fixture-secret\nresult ok\n'})+
+  frame({type:'end',id:'c1',code:0})));
+ await capture.end();
+ const events=f.writes.flatMap(write=>write.terminal_events||[]);
+ assert.deepEqual(events.map(x=>x.event_type),['command_start','output','output','command_end']);
+ assert.equal(events[0].command,'echo safe');assert.equal(events[1].content,'[linha sensível omitida]');
+ assert.equal(events[2].content,'result ok');assert.equal(events[3].exit_code,0);
+ assert.ok(!JSON.stringify(f.writes).includes('fixture-secret'));await f.p.close();
+});
+test('Terminal upload batches stay below one half MiB without dropping output events',async()=>{
+ const f=fixture();for(let i=0;i<4;i++)f.p.feed('x'.repeat(150000)+'\n','command:'+i);
+ await f.p.flush('lines');await f.p.close();const events=f.writes.flatMap(write=>write.terminal_events||[]);
+ assert.equal(events.length,4);for(const write of f.writes)assert.ok(Buffer.byteLength(JSON.stringify(write.terminal_events||[]))<MAX_BYTES);
+});
 test('Silent command exit never emits a redundant progress row update',async()=>{
  const f=fixture();await f.p.commandComplete(0,'empty');await f.advance(60000);await f.p.close();assert.equal(f.writes.length,0);
 });
@@ -83,11 +119,11 @@ test('Nonzero command exit flushes buffered stderr with redaction',async()=>{
  const f=fixture({env:{API_TOKEN:'abcdefghijklmnop'}});f.p.feed('failed\nAuthorization: Bearer abcdefghijklmnop','err');
  await f.p.commandComplete(12,'err');assert.equal(f.writes.length,1);assert.match(f.writes[0].progress_message,/erro/);assert.ok(!JSON.stringify(f.writes).includes('abcdefghijklmnop'));await f.p.close();
 });
-test('Command completion resets both successful time and next 30-line batch',async()=>{
+test('Command completion resets the next one-second batch timer',async()=>{
  const f=fixture();await f.advance(10000);f.p.feed('a\nb\nc\n');await f.p.commandComplete(0);
- for(let i=0;i<29;i++)f.p.line('next '+i);await f.advance(50000);assert.equal(f.writes.length,1);
- await f.advance(9999);assert.equal(f.writes.length,1);f.p.line('thirtieth');await tick();assert.equal(f.writes.length,2);
- f.p.line('timer batch');await f.advance(59999);assert.equal(f.writes.length,2);await f.advance(1);assert.equal(f.writes.length,3);await f.p.close();
+ for(let i=0;i<29;i++)f.p.line('next '+i);await f.advance(999);assert.equal(f.writes.length,1);
+ await f.advance(1);assert.equal(f.writes.length,2);
+ f.p.line('timer batch');await f.advance(999);assert.equal(f.writes.length,2);await f.advance(1);assert.equal(f.writes.length,3);await f.p.close();
 });
 test('Framed capture waits for completion flush before next command output and accepts split frames',async()=>{
  let release;const writes=[];const f=fixture({write:b=>{writes.push(b);return writes.length===1?new Promise(r=>{release=r;}):Promise.resolve();}});
@@ -121,7 +157,7 @@ test('Successful progress sequence advances exactly once; failure keeps same can
 test('Reasons and new-line counts match all four triggers, excluding old rolling lines',async()=>{
  const f=fixture();for(let i=0;i<30;i++)f.p.line('line');await tick();
  assert.equal(f.writes[0].last_flush_reason,'lines');assert.equal(f.writes[0].last_flush_line_count,30);
- f.p.line('next');await f.advance(60000);assert.equal(f.writes[1].last_flush_reason,'timeout');assert.equal(f.writes[1].last_flush_line_count,1);
+ f.p.line('next');await f.advance(1000);assert.equal(f.writes[1].last_flush_reason,'timeout');assert.equal(f.writes[1].last_flush_line_count,1);
  f.p.feed('a\nb\nc','cmd');await f.p.commandComplete(1,'cmd');assert.equal(f.writes[2].last_flush_reason,'command_end');assert.equal(f.writes[2].last_flush_line_count,3);
  f.p.feed('final fragment');await f.p.close('failed');assert.equal(f.writes[3].last_flush_reason,'final');assert.equal(f.writes[3].last_flush_line_count,1);
  assert.deepEqual(f.writes.map(b=>b.progress_seq),['1','2','3','4']);

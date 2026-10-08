@@ -39,25 +39,37 @@ function progressFor(task){
   let file,fileClosed=false,localWarned=false;
   try{file=localLog(STATE,task.id);}catch{log('progress_local_log_unavailable');}
   const supported=['progress_message','recent_output','last_progress_at','progress_seq','last_flush_reason','last_flush_line_count'].every(k=>Object.prototype.hasOwnProperty.call(task,k));
+   const supportsPercent=Object.prototype.hasOwnProperty.call(task,'progress_percent');
   if(!supported)log('progress_local_only',{reason:'schema_pending'});
-  const progress=createProgress({env:process.env,initialSeq:task.progress_seq,append:s=>{if(file&&!fileClosed)file.append(s);},
-    onError:event=>{if(event==='local_log_failed'){if(localWarned)return;localWarned=true;}log(event);},write:async body=>{
+   const progress=createProgress({env:process.env,initialSeq:task.progress_seq,includePercent:supportsPercent,append:s=>{if(file&&!fileClosed)file.append(s);},
+     onError:event=>{if(event==='local_log_failed'){if(localWarned)return;localWarned=true;}log(event);},write:async body=>{
+       const {terminal_events,...progressBody}=body;
+       if(terminal_events?.length){
+         const events=terminal_events.map(({event_key,event_type,command_key,command,stream,content,exit_code})=>({
+           event_key,task_id:task.id,event_type,command_key:command_key||null,command:command||null,
+           stream:stream||null,content:content||null,exit_code:exit_code??null
+         }));
+         await request('bridge_task_terminal_events?on_conflict=event_key',{
+           method:'POST',signal:AbortSignal.timeout(10000),headers:{Prefer:'resolution=ignore-duplicates,return=minimal'},
+           body:JSON.stringify(events)
+         });
+       }
       if(!supported)return {localOnly:true};
-      const expected=String(BigInt(body.progress_seq)-1n);
+       const expected=String(BigInt(progressBody.progress_seq)-1n);
       const route='bridge_tasks?id=eq.'+encodeURIComponent(task.id);
       // Compare-and-swap plus the DB trigger atomically advances exactly one step.
       const rows=await request(route+'&status=eq.running&progress_seq=eq.'+expected+'&select=id',{
-        method:'PATCH',signal:AbortSignal.timeout(10000),headers:{Prefer:'return=representation'},body:JSON.stringify(body)
+         method:'PATCH',signal:AbortSignal.timeout(10000),headers:{Prefer:'return=representation'},body:JSON.stringify(progressBody)
       });
       if(rows?.length)return;
       // A previous response may have been lost. One bounded read reconciles that
       // exact snapshot; this is not a polling loop and never repeats the increment.
-      const saved=await request(route+'&select=progress_seq::text,progress_message,recent_output,last_flush_reason,last_flush_line_count&limit=1',{
+       const saved=await request(route+'&select=progress_seq::text,progress_message,recent_output,last_flush_reason,last_flush_line_count'+(supportsPercent?',progress_percent':'')+'&limit=1',{
         signal:AbortSignal.timeout(10000)
       });
       const row=saved?.[0];
-      if(!row||String(row.progress_seq)!==body.progress_seq||
-         ['progress_message','recent_output','last_flush_reason','last_flush_line_count'].some(k=>row[k]!==body[k]))throw Error('Progress not acknowledged');
+       if(!row||String(row.progress_seq)!==progressBody.progress_seq||
+          ['progress_message','recent_output','last_flush_reason','last_flush_line_count',...(supportsPercent?['progress_percent']:[])].some(k=>row[k]!==progressBody[k]))throw Error('Progress not acknowledged');
 
     }});
   const close=progress.close;

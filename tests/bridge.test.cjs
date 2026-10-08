@@ -77,11 +77,11 @@ test('Bridge opt-in terminal deltas use stderr and ignore unrelated turns withou
 
 test('Bridge command completion captures aggregate tail and exit after streamed output',async t=>{
  const b=await setup(t,{env:{CODEX_BRIDGE_PROGRESS:'1'}});const frames=[];b.h.proc.stderr={write:s=>frames.push(JSON.parse(s))};
- b.send('item/started',{threadId:'thread-test',turnId:'turn-test',item:{type:'commandExecution',id:'cmd'}});
+ b.send('item/started',{threadId:'thread-test',turnId:'turn-test',item:{type:'commandExecution',id:'cmd',command:'echo hello'}});
  assert.equal(b.h.logs.length,0);
  b.send('item/commandExecution/outputDelta',{threadId:'thread-test',turnId:'turn-test',itemId:'cmd',delta:'first\n'});
  b.send('item/completed',{threadId:'thread-test',turnId:'turn-test',item:{type:'commandExecution',id:'cmd',exitCode:7,aggregatedOutput:'first\nlast'}});
- assert.deepEqual(frames.map(f=>[f.type,f.text??f.code]),[['data','first\n'],['data','last'],['end',7]]);
+ assert.deepEqual(frames.map(f=>[f.type,f.command??f.text??f.code]),[['start','echo hello'],['data','first\n'],['data','last'],['end',7]]);
 });
 test('Bridge silent command completion emits only control, not an output line',async t=>{
  const b=await setup(t,{env:{CODEX_BRIDGE_PROGRESS:'1'}});const frames=[];b.h.proc.stderr={write:s=>frames.push(JSON.parse(s))};

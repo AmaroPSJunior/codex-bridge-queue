@@ -12,7 +12,8 @@ export async function createData(config,{onEvent,onState,onRefresh,onAuthLost,lo
  async function rpc(name,args={}){const {data,error}=await client.rpc(name,args);if(error)throw Error('Não foi possível ler o painel. Confira conexão e autorização.');return data;}
  return {
   async login(email,password){const {error}=await client.auth.signInWithPassword({email,password});if(error)throw Error('Login não autorizado. Confira sua conta.');try{await rpc('bridge_dashboard_list',{p_limit:1});}catch(e){await client.auth.signOut();throw e;}},
-  list:args=>rpc('bridge_dashboard_list',args), summary:id=>rpc('bridge_dashboard_summary',{p_id:id}), detail:id=>rpc('bridge_dashboard_detail',{p_id:id}),stats:()=>rpc('bridge_dashboard_stats'),
+  list:args=>rpc('bridge_dashboard_list',args), summary:id=>rpc('bridge_dashboard_summary',{p_id:id}), detail:id=>rpc('bridge_dashboard_detail',{p_id:id}),
+  terminalEvents:(id,after=0)=>rpc('bridge_dashboard_terminal_events',{p_id:id,p_after_seq:after,p_limit:501}),stats:()=>rpc('bridge_dashboard_stats'),
   async subscribe(){await abort();closed=false;const attempt=generation;gate=new Connection({refresh:onRefresh,onState});gate.set('connecting');try{const {data:{session}}=await client.auth.getSession();if(!session?.access_token)throw Error('Sessão ausente');await client.realtime.setAuth(session.access_token);}catch{if(attempt===generation)gate.set('offline');return;}if(closed||attempt!==generation)return;
    channel=client.channel('bridge-dashboard',{config:{private:true}}).on('broadcast',{event:'task_changed'},({payload})=>{if(!closed&&attempt===generation)onEvent?.(payload);}).subscribe(status=>{if(!closed&&attempt===generation)gate.set(status==='SUBSCRIBED'?'live':status==='CLOSED'?'offline':'reconnecting');});
   },

@@ -19,9 +19,17 @@ Abra `http://127.0.0.1:4173`. Os dados fictícios estão identificados como **De
 - **Logs:** escolha de tarefa, linhas numeradas e busca no buffer carregado.
 - **Configurações:** limites reais gerados do código, conectividade e restrições.
 
+Comandos executados pelo Codex no Termux entram automaticamente no histórico da tarefa. Para comandos colados manualmente, use o wrapper abaixo com o número da tarefa para manter a associação e registrar saída/código de saída:
+
+```sh
+node ~/codex-bridge/scripts/terminal-task.cjs 315 -- 'adb connect 192.168.0.177:5555'
+```
+
+O wrapper usa as variáveis Supabase já autorizadas na sessão do Termux, executa o comando e mostra sua saída no terminal. Um comando digitado diretamente no shell, sem o wrapper, não carrega o identificador da tarefa e não pode ser associado ao histórico.
+
 A identificação normal é **Tarefa 12 — Diagnóstico ADB do BYD — em execução**. Estados internos permanecem `queued/running/succeeded/failed/cancelled`. UUID aparece apenas ao abrir “Identificação técnica”. Tarefas antigas continuam legíveis mesmo sem número/título.
 
-Não há percentual real de execução no contrato atual. A faixa de atividade é indeterminada e não inventa percentuais. Não existe inventário estruturado de arquivos/comandos: essas abas explicam a limitação. O worker também não publica heartbeat: **atividade recente é uma inferência de progresso, não uma confirmação permanente de online**. Ausência de progresso não significa offline.
+O painel mostra o percentual quando o executor o informa; quando não há esse dado, a faixa fica indeterminada e não inventa percentuais. Comandos e saída sanitizada ficam associados à tarefa. O worker também não publica heartbeat: **atividade recente é uma inferência de progresso, não uma confirmação permanente de online**. Ausência de progresso não significa offline.
 
 ```mermaid
 flowchart LR
@@ -39,11 +47,12 @@ flowchart LR
 
 O HTML pode ser público no GitHub Pages; **as tarefas não são públicas**. O painel só acessa RPCs de leitura após login com uma conta autorizada. Não habilite `SELECT` geral para `anon`/`authenticated` em `bridge_tasks` nem publique eventos brutos dessa tabela para o navegador.
 
-1. Um administrador revisa e aplica `database/dashboard-read.sql` no projeto correto. A migração cria funções; não altera os estados, colunas, RLS, grants ou claim da fila. `task-identity.sql` e `task-progress.sql` continuam migrações separadas. Projeção JSON tolera suas colunas ausentes.
+1. Um administrador revisa e aplica `database/dashboard-read.sql` no projeto correto. A migração cria funções; não altera os estados, colunas, RLS, grants ou claim da fila. `task-identity.sql` e `task-progress.sql` continuam migrações separadas. Projeção JSON tolera colunas ausentes.
 2. No Supabase Auth, criar/convidar a conta de operador. Via Admin API segura ou SQL administrativo, definir **app_metadata** `bridge_dashboard: true`. Não usar `user_metadata`, editável pelo usuário. Conta sem essa autorização é recusada mesmo autenticada.
-3. Por padrão os logs não são retornados. Somente após validar a versão/redação do worker em produção, conceder à conta **app_metadata** `bridge_dashboard_logs: true`. Título/progresso também devem conter conteúdo apropriado aos operadores autorizados. Se não for possível verificar a sanitização, **não habilitar logs**.
-4. Para avisos ao vivo, revisar/aplicar `database/dashboard-realtime.sql`. Requer `realtime.send` e Realtime habilitado. Auditar políticas existentes em `realtime.messages`: políticas permissivas se combinam com OR, portanto outra política ampla pode tornar a restrição ineficaz. O tópico privado é `bridge-dashboard`.
-5. Configurar somente valores públicos no build e abrir “Conectar” no site:
+3. Revisar/aplicar `database/task-terminal-events.sql` depois da API de leitura. Ela cria uma tabela com RLS habilitado, sem acesso direto de `anon`/`authenticated`; o worker escreve com `service_role` e o RPC autenticado lê por páginas, exigindo `bridge_dashboard_logs: true`. O canal nunca envia comandos nem conteúdo de saída.
+4. Por padrão os logs não são retornados. Somente após validar a versão/redação do worker em produção, conceder à conta **app_metadata** `bridge_dashboard_logs: true`. Título/progresso também devem conter conteúdo apropriado aos operadores autorizados. Se não for possível verificar a sanitização, **não habilitar logs**.
+5. Para avisos ao vivo, revisar/aplicar `database/dashboard-realtime.sql` depois da tabela de eventos. Requer `realtime.send` e Realtime habilitado. Auditar políticas existentes em `realtime.messages`: políticas permissivas se combinam com OR, portanto outra política ampla pode tornar a restrição ineficaz. O tópico privado é `bridge-dashboard`.
+6. Configurar somente valores públicos no build e abrir “Conectar” no site:
 
 ```sh
 PUBLIC_SUPABASE_URL=https://pqskisosukkiurddlodw.supabase.co \
@@ -60,7 +69,8 @@ O login usa Supabase Auth e mantém a sessão somente na memória da aba; recarr
 
 - `bridge_dashboard_list`: no máximo 50 itens por leitura; cursor `(created_at,id)` decrescente. Busca por nome/número e filtro de estado no servidor. Lista não inclui `instruction`, `result`, `error` ou `recent_output`.
 - `bridge_dashboard_summary`: metadados de uma única tarefa alterada; evita buscar listas ou logs inteiros a cada aviso.
-- `bridge_dashboard_detail`: UUID como parâmetro interno; retorna metadados, resumo genérico de conclusão e, somente com autorização adicional, buffer sanitizado limitado a 500 linhas/512 KiB serializados.
+- `bridge_dashboard_detail`: UUID como parâmetro interno; retorna metadados, resumo genérico de conclusão e, somente com autorização adicional, buffer recente sanitizado limitado a 500 linhas/512 KiB serializados.
+- `bridge_dashboard_terminal_events`: histórico durável de comandos, saída e código de saída por tarefa; cursor numérico em texto e páginas de até 500 eventos. O painel permite carregar as páginas seguintes.
 - `bridge_dashboard_stats`: agregados das tarefas **criadas nos últimos 30 dias**, dias em UTC. Taxa de sucesso = sucesso / (sucesso + falha + cancelamento). Durações ignoram timestamps ausentes. Paginação não afeta agregados.
 - `task_name` é alias de `task_name` ou `title` quando disponíveis. `task_number` e `progress_seq` são strings decimais na API para preservar precisão de bigint; UUID permanece interno.
 - As entradas RPC públicas usam `SECURITY INVOKER`; funções privilegiadas ficam no schema **não exposto** `bridge_dashboard_private` (não adicioná-lo aos schemas da Data API). Essas funções `SECURITY DEFINER` verificam o usuário atual em cada chamada, têm `search_path` vazio, objetos qualificados e `EXECUTE` removido de `PUBLIC`/`anon`. Esse gateway explícito é necessário porque a fila atual não concede leitura aos usuários. Não é uma view pública que contorna RLS silenciosamente.
@@ -68,7 +78,7 @@ O login usa Supabase Auth e mantém a sessão somente na memória da aba; recarr
 
 ### Realtime e desconexão
 
-Um trigger envia **somente UUID, progress_seq e operação** pelo Broadcast privado; nunca envia linhas brutas da tarefa. O cliente agrupa avisos por até um segundo e relê somente os metadados das tarefas alteradas; detalhes de saída são buscados apenas quando abertos. Agregados são atualizados em lotes de 15 segundos motivados por eventos, sem polling adicional. Eventos com `progress_seq` novo tornam o buffer atualizado visível. Nenhuma tabela de histórico é criada. O transporte interno `realtime.messages` tem retenção própria do Supabase; não é o histórico da aplicação.
+Triggers enviam **somente UUID, sequência e operação** pelo Broadcast privado; nunca enviam linhas brutas da tarefa ou tabela de eventos. O cliente agrupa avisos por até um segundo e relê somente os metadados das tarefas alteradas; detalhes e páginas de saída são buscados quando a tarefa está aberta. Agregados são atualizados em lotes de 15 segundos motivados por eventos, sem polling adicional. O worker salva progresso em lotes de até 30 linhas ou 1 segundo e salva imediatamente no fim de cada comando. A janela de 500 linhas continua como fallback; o histórico completo fica na tabela dedicada.
 
 Sem conexão Realtime, a leitura de fallback ocorre a cada **60 segundos**. O SDK tenta reconectar; há botões Atualizar e Reconectar. Quando o canal conecta, o timer de fallback é removido. O trigger de aviso não pode impedir claim/finalização: falha de broadcast é isolada. Portanto, a implantação deve testar entrega de eventos; canal conectado sozinho não prova que o trigger está enviando. Se eventos não chegarem, verifique trigger/políticas e use Atualizar ou desabilite o canal até corrigir.
 

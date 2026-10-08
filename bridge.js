@@ -109,6 +109,10 @@ async function main() {
     if (!p || p.threadId!==threadId || !turnId) return;
     // Opt-in stderr only: preserve stdout JSON and suppress unrelated turns.
     if (!finished && process.env.CODEX_BRIDGE_PROGRESS==='1' && p.turnId===turnId) {
+      if(msg.method==='item/started' && p.item?.type==='commandExecution') {
+        const id=String(p.item.id||'command');
+        progressEvent({type:'start',id,command:typeof p.item.command==='string'?p.item.command:''});
+      }
       if(msg.method==='item/commandExecution/outputDelta' && typeof p.delta==='string') {
         const id=String(p.itemId||'command');
         commandOffsets.set(id,(commandOffsets.get(id)||0)+p.delta.length);
