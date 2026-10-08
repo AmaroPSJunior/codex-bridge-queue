@@ -1,4 +1,4 @@
-<!-- Gerado por npm run docs:generate; não editar. Fonte: docs/model.json. SHA256: c8e5ffeba618accac2453eb7a0f1ae25cd207ede9086eae13313c36c4a218ceb -->
+<!-- Gerado por npm run docs:generate; não editar. Fonte: docs/model.json. SHA256: 865cae297dd6c8eb58a55c48f8ac8f3798c33f57d5c38272322ecab15a779fc0 -->
 # Ponte remota ChatGPT → Termux → Codex
 
 A ponte entrega seus pedidos ao Codex no Termux e devolve as respostas por GitHub Issues ou Supabase. Pense nela como um serviço de entrega com uma caixa de entrada e um recibo.
