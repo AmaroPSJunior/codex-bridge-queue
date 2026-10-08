@@ -130,5 +130,7 @@ async function reconcileTasks(){
  }catch{if(state.connection==='live'){state.connection='reconnecting';render();}}
  finally{reconcileBusy=false;}
 }
-setInterval(()=>{void reconcileTasks();},3000);
+setInterval(()=>{void reconcileTasks();},state.route==='overview'?2000:3000);
+// Reconcile the overview immediately on returning to the tab, without waiting for the next interval.
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.route==='overview')void reconcileTasks();});
 renderBuild();void refreshBuildStatus();setInterval(refreshBuildStatus,15000);setInterval(()=>{if(state.route==='overview')render();renderBuild();},30000);setInterval(()=>{if(state.route==='projects'&&source&&state.mode==='live')void source.projects().then(p=>{state.projects=p||[];render();}).catch(()=>{});},3000);
