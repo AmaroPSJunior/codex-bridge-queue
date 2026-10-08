@@ -41,7 +41,10 @@ async function build(){
   fs.writeFileSync(target,source);
  }
  const indexPath=path.join(out,'index.html');
+ const buildNumber=String(process.env.DASHBOARD_BUILD_NUMBER||'0');
+ if(!/^\d{1,9}$/.test(buildNumber))throw Error('Invalid dashboard build number');
  fs.writeFileSync(indexPath,fs.readFileSync(indexPath,'utf8')
+  .replace('id="app-version">v1.0.0','id="app-version">v1.0.'+Number(buildNumber))
   .replace('./app.mjs','./app.mjs?v='+releaseVersion)
   .replace('./styles.css','./styles.css?v='+releaseVersion));
  fs.writeFileSync(path.join(out,'public-config.json'),JSON.stringify(publicConfig,null,2)+'\n');
