@@ -142,4 +142,24 @@ async function reconcileTasks(){
 setInterval(()=>{void reconcileTasks();void loadLiveDetail();},state.route==='overview'?2000:3000);
 // Reconcile the overview immediately on returning to the tab, without waiting for the next interval.
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.route==='overview'){void reconcileTasks();void loadLiveDetail();}});
-renderBuild();void refreshBuildStatus();setInterval(refreshBuildStatus,15000);setInterval(()=>{if(state.route==='overview')render();renderBuild();},30000);setInterval(()=>{if(state.route==='projects'&&source&&state.mode==='live')void source.projects().then(p=>{state.projects=p||[];render();}).catch(()=>{});},3000);
+// Compare the deployed release identifier, not just GitHub Actions completion.
+// GitHub Pages may serve an old release briefly after a workflow succeeds.
+let releaseCheckBusy=false;
+async function refreshPublishedFrontend(){
+ if(releaseCheckBusy||document.hidden)return;
+ releaseCheckBusy=true;
+ try{
+  const response=await fetch('./index.html?release-check='+Date.now(),{cache:'no-store'});
+  if(!response.ok)return;
+  const html=await response.text();
+  const deployed=html.match(/app\.mjs\?v=([a-f0-9]{12})/i)?.[1];
+  const loaded=document.querySelector('script[type="module"][src*="app.mjs"]')?.getAttribute('src')?.match(/[?&]v=([a-f0-9]{12})/i)?.[1];
+  if(!deployed||!loaded||deployed===loaded)return;
+  // One reload per published version in this tab, including across navigations.
+  const key='bridge-dashboard-reloaded-release';
+  if(sessionStorage.getItem(key)===deployed)return;
+  sessionStorage.setItem(key,deployed);
+  window.location.reload();
+ }catch{}finally{releaseCheckBusy=false;}
+}
+renderBuild();void refreshBuildStatus();void refreshPublishedFrontend();setInterval(refreshPublishedFrontend,15000);setInterval(refreshBuildStatus,15000);setInterval(()=>{if(state.route==='overview')render();renderBuild();},30000);setInterval(()=>{if(state.route==='projects'&&source&&state.mode==='live')void source.projects().then(p=>{state.projects=p||[];render();}).catch(()=>{});},3000);
