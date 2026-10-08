@@ -40,3 +40,19 @@
 .project-check input{width:auto}
 #project-select-error,#project-error{color:var(--bad);font-size:11px}
 @media(max-width:760px){.project-select-list,.project-grid{grid-template-columns:1fr}.project-switch{max-width:140px}}
+
+
+/* Build feedback stays present in the header; only an active build animates. */
+.build-status{position:relative;isolation:isolate;overflow:hidden;white-space:nowrap;min-height:38px;padding:10px 14px;border-radius:14px;transition:background .25s,color .25s,border-color .25s,box-shadow .25s}
+.build-status i{flex:none}
+.build-status.idle{background:#101b22;border-color:#28443f;color:#99cdbd}
+.build-status.idle i{background:#58c79f;box-shadow:0 0 8px #58c79f55;animation:none}
+.build-status.unknown{border-color:#33415b;color:#a8b6c9}
+.build-status.unknown i{background:#7887a7;box-shadow:none;animation:none}
+.build-status.success i,.build-status.failed i{animation:none}
+.build-status.running{overflow:visible;border:1px solid transparent;background:linear-gradient(#111c30,#111c30) padding-box,linear-gradient(115deg,#63dfff,#7b83ff,#f171d0,#5fffc6,#63dfff) border-box;color:#f1f6ff;box-shadow:0 0 16px #767cff66,0 0 30px #47d7ff33;animation:build-glow 1.8s ease-in-out infinite}
+.build-status.running:before{content:"";position:absolute;inset:-5px;border-radius:18px;z-index:-1;background:linear-gradient(105deg,#5af6db,#6a8dff,#e36bff,#5af6db);background-size:300% 100%;filter:blur(9px);opacity:.55;animation:build-shimmer 2.6s linear infinite}
+.build-status.running i{background:#75f4f8;box-shadow:0 0 12px #64f5f8;animation:pulse 1s ease-in-out infinite}
+@keyframes build-shimmer{to{background-position:300% 0}}
+@keyframes build-glow{50%{box-shadow:0 0 22px #7d85ff99,0 0 36px #6ee7fa55}}
+@media(prefers-reduced-motion:reduce){.build-status.running,.build-status.running:before,.build-status.running i{animation:none}}
