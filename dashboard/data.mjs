@@ -25,7 +25,10 @@ export async function createData(config,{onEvent,onLive,onState,onRefresh,onAuth
     const refreshed=await client.auth.refreshSession();
     if(refreshed.error||!refreshed.data?.session)return false;
    }
-   return true;
+   let verified;
+   try{verified=await client.auth.getUser();}catch{throw Error('Verificação temporariamente indisponível; sessão preservada.');}
+   if(verified?.error){if(verified.error.status===401||verified.error.status===403)return false;throw Error('Verificação temporariamente indisponível; sessão preservada.');}
+   return !!verified?.data?.user;
   },
   async login(email,password){const {error}=await client.auth.signInWithPassword({email,password});if(error)throw Error('Login não autorizado. Confira sua conta.');},
   list:(projectId,args={})=>rpc('bridge_dashboard_project_list',{p_project_id:projectId,...args}), summary:id=>rpc('bridge_dashboard_summary',{p_id:id}), detail:id=>rpc('bridge_dashboard_detail',{p_id:id}), deleteTask:id=>rpc('bridge_dashboard_delete',{p_id:id}), stats:projectId=>rpc('bridge_dashboard_project_stats',{p_project_id:projectId}), revision:()=>rpc('bridge_dashboard_revision'), projects:()=>rpc('bridge_dashboard_projects'), createProject:input=>rpc('bridge_dashboard_create_project',{p_name:input.name,p_description:input.description||null,p_create_github:!!input.createGithub,p_repo_name:input.repoName||null,p_visibility:input.visibility||'private'}),
