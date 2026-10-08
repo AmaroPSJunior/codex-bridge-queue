@@ -48,6 +48,7 @@ jobs:
         env:
           PUBLIC_SUPABASE_URL: ${{ vars.PUBLIC_SUPABASE_URL }}
           PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          DASHBOARD_BUILD_NUMBER: ${{ github.run_number }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dashboard/dist
