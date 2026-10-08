@@ -57,7 +57,33 @@ let searchTimer;function bind(){main.querySelectorAll('[data-live-task]').forEac
 function resetPage(){state.page={number:1,rows:null,cursors:[null],hasNext:false,loading:false};}
 async function loadTaskPage(number=1){if(!source||state.mode!=='live'||!state.selectedProject||number<1)return;const cursor=state.page.cursors[number-1];if(number>1&&!cursor)return;state.page.loading=true;render();try{const rows=await source.list(state.selectedProject.id,queuePageArgs({status:state.status,search:state.search,cursor,limit:12}));const page=queuePageResult((rows||[]).map(normalize),12);state.page.number=number;state.page.rows=page.rows;state.page.hasNext=page.hasNext;if(page.nextCursor)state.page.cursors[number]=page.nextCursor;state.page.loading=false;render();}catch{state.page.loading=false;render();}}
 function renderBuild(){const el=$('#build-status');if(!el)return;const b=state.build;el.hidden=false;const status=b.status==='success'&&Date.now()>b.visibleUntil?'idle':b.status==='hidden'?'unknown':b.status;el.className='build-status '+status;el.setAttribute('aria-label',status==='running'?'Build do dashboard em andamento':status==='success'?'Build do dashboard concluído':status==='failed'?'Falha no build do dashboard':status==='unknown'?'Situação do build indisponível':'Nenhum build em execução identificado');el.innerHTML='<i aria-hidden="true"></i><span>'+(status==='running'?'Publicando…':status==='success'?'✓ Publicado':status==='failed'?'⚠ Build falhou':status==='unknown'?'Build · sem dados':'Build · em dia')+'</span>';}
-async function refreshBuildStatus(){try{const response=await fetch('https://api.github.com/repos/AmaroPSJunior/codex-bridge-queue/actions/runs?per_page=30',{cache:'no-store',headers:{Accept:'application/vnd.github+json'}});if(!response.ok)return;const body=await response.json(),next=buildReleaseState(body.workflow_runs||[]),changed=state.build.sha!==next.sha||state.build.status!==next.status;state.build.sha=next.sha;state.build.status=next.status;if(changed&&next.status==='success')state.build.visibleUntil=Date.now()+8000;renderBuild();}catch{}}
+let buildPollTimer=null,buildApiCooldown=0,buildRequestBusy=false;
+function scheduleBuildStatus(delay){clearTimeout(buildPollTimer);buildPollTimer=setTimeout(()=>void refreshBuildStatus(),delay);}
+async function refreshBuildStatus(){
+ if(buildRequestBusy)return;
+ if(Date.now()<buildApiCooldown){scheduleBuildStatus(Math.max(30000,buildApiCooldown-Date.now()));return;}
+ buildRequestBusy=true;
+ let delay=90000;
+ try{
+  const response=await fetch('https://api.github.com/repos/AmaroPSJunior/codex-bridge-queue/actions/runs?per_page=30',{cache:'no-store',headers:{Accept:'application/vnd.github+json'},signal:AbortSignal.timeout(12000)});
+  if(!response.ok){
+   // Unauthenticated GitHub API reads have a limited hourly budget.
+   const exhausted=response.status===429||(response.status===403&&response.headers.get('x-ratelimit-remaining')==='0');
+   if(exhausted){
+    const reset=Number(response.headers.get('x-ratelimit-reset'));
+    buildApiCooldown=Number.isFinite(reset)&&reset>0?Math.max(Date.now()+120000,reset*1000+5000):Date.now()+300000;
+    delay=Math.max(30000,buildApiCooldown-Date.now());
+   }else delay=120000;
+   state.build.status='hidden';renderBuild();return;
+  }
+  const body=await response.json(),next=buildReleaseState(body.workflow_runs||[]),changed=state.build.sha!==next.sha||state.build.status!==next.status;
+  state.build.sha=next.sha;state.build.status=next.status;
+  if(changed&&next.status==='success')state.build.visibleUntil=Date.now()+8000;
+  delay=next.status==='running'?20000:90000;
+  renderBuild();
+ }catch{state.build.status='hidden';renderBuild();delay=120000;}
+ finally{buildRequestBusy=false;scheduleBuildStatus(delay);}
+}
 async function openDetail(id){let r=state.rows.find(x=>x.id===id)||state.page.rows?.find(x=>x.id===id);if(state.mode==='live'&&source){try{r=normalize(await source.detail(id)||r);}catch{}}if(!r)return;const canDelete=canDeleteTask(r,state.mode),failure=r.status==='failed'?'<section class="failure-reason"><span>⚠ Motivo da falha</span><p>'+e(r.error_summary||r.error||'Motivo não informado')+'</p></section>':'';$('#detail-body').innerHTML='<span class="kicker">'+e(copy[r.status]||statusLabel(r.status))+'</span><h2 id="detail-title">'+e(label(r))+'</h2><div class="detail-progress"><progress aria-label="Progresso detalhado" max="100" value="'+pct(r)+'"></progress><strong>'+e(pctText(r))+'</strong></div><p class="detail-message">'+e(r.progress_message||'Sem mensagem nova.')+'</p>'+failure+'<div class="detail-facts"><div><span>Começou</span><strong>'+date(r.claimed_at||r.created_at)+'</strong></div><div><span>Tempo</span><strong>'+duration(seconds(r.claimed_at,r.completed_at||new Date().toISOString()))+'</strong></div></div><div class="detail-actions"><button id="delete-task" class="danger" '+(canDelete?'':'disabled')+'>'+((r.status==='running')?'Não é possível excluir em execução':'Excluir tarefa')+'</button></div>';const del=$('#delete-task');if(del&&canDelete)del.onclick=()=>deleteTask(r);$('#detail-dialog').showModal();}
 async function deleteTask(r){if(!source||!confirmTaskDeletion(confirm,r,state.mode,label))return;const button=$('#delete-task');if(button){button.disabled=true;button.textContent='Excluindo…';}try{const removed=await source.deleteTask(r.id);if(!removed)throw Error('Tarefa não encontrada.');state.rows=removeTaskRows(state.rows,r.id);if(state.page.rows)state.page.rows=removeTaskRows(state.page.rows,r.id);$('#detail-dialog').close();await refresh();}catch(err){if(button){button.disabled=false;button.textContent='Excluir tarefa';}alert(err?.message||'Não foi possível excluir a tarefa.');}}
 async function refreshRoute(){
@@ -204,4 +230,4 @@ async function refreshPublishedFrontend(){
   window.location.reload();
  }catch{}finally{releaseCheckBusy=false;}
 }
-renderBuild();void refreshBuildStatus();void refreshPublishedFrontend();setInterval(refreshPublishedFrontend,15000);setInterval(refreshBuildStatus,15000);setInterval(()=>{if(state.route==='overview')render();renderBuild();},30000);setInterval(()=>{if(state.route==='projects'&&source&&state.mode==='live')void source.projects().then(p=>{state.projects=p||[];render();}).catch(()=>{});},3000);
+renderBuild();void refreshBuildStatus();void refreshPublishedFrontend();setInterval(refreshPublishedFrontend,15000);setInterval(()=>{if(state.route==='overview')render();renderBuild();},30000);setInterval(()=>{if(state.route==='projects'&&source&&state.mode==='live')void source.projects().then(p=>{state.projects=p||[];render();}).catch(()=>{});},3000);
