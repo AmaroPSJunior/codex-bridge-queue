@@ -123,7 +123,7 @@ async function reconcileTasks(){
    if(projectId!==state.selectedProject?.id||route!==state.route)return;
    const next=(rows||[]).map(normalize);
    if(JSON.stringify(next)!==JSON.stringify(state.rows)||JSON.stringify(stats)!==JSON.stringify(state.stats)){
-    state.rows=next;state.stats=stats;render();
+    state.rows=next;state.stats=stats;const terminal=route==='live'?$('#live-terminal'):null;const follow=route==='live'&&terminal&&terminal.scrollHeight-terminal.scrollTop-terminal.clientHeight<64;render();if(follow){const updated=$('#live-terminal');if(updated)updated.scrollTop=updated.scrollHeight;}
    }
   }
  }catch{if(state.connection==='live'){state.connection='reconnecting';render();}}
