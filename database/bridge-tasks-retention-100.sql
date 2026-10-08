@@ -5,12 +5,12 @@ returns trigger language plpgsql security definer set search_path = '' as $$
 begin
   delete from public.bridge_tasks t
   where t.task_number in (
-    select old.task_number from public.bridge_tasks old
-    where old.task_number is not null
-      and old.status in ('succeeded','failed','cancelled')
-      and old.task_number not in (
-        select recent.task_number from public.bridge_tasks recent
-        order by recent.task_number desc limit 100
+    select candidate_task.task_number from public.bridge_tasks candidate_task
+    where candidate_task.task_number is not null
+      and candidate_task.status in ('succeeded','failed','cancelled')
+      and candidate_task.task_number not in (
+        select recent_task.task_number from public.bridge_tasks recent_task
+        order by recent_task.task_number desc limit 100
       )
   );
   return null;
