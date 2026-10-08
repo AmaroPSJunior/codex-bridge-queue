@@ -68,3 +68,12 @@
 .project-switch small{font:10px/1.25 ui-monospace,SFMono-Regular,Consolas,monospace;color:#95a5c1;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .project-choice[aria-pressed="true"]{border-color:#6d7cfb;background:#20294b}
 @media(max-width:680px){.top-actions .project-switch{max-width:48vw;padding:7px 9px}.project-switch small{font-size:9px}}
+
+/* Ao vivo: wider command output alongside a narrower, scrollable history. */
+.live-workspace-grid{display:grid;grid-template-columns:minmax(0,2.25fr) minmax(260px,1fr);gap:18px;align-items:start;margin-top:18px}
+.live-workspace-grid>.terminal-card,.live-workspace-grid>.live-history{min-width:0;margin:0}
+.live-workspace-grid #live-terminal{max-height:min(65vh,680px);min-height:340px}
+.live-history .wins-list{max-height:min(65vh,680px);overflow-y:auto}
+.live-history .wins-list button{min-width:0;overflow-wrap:anywhere}
+.live-history .wins-list button>span:nth-child(2){min-width:0;overflow-wrap:anywhere}
+@media(max-width:900px){.live-workspace-grid{grid-template-columns:minmax(0,1fr)}.live-workspace-grid #live-terminal{min-height:220px;max-height:50vh}.live-history .wins-list{max-height:320px}}
