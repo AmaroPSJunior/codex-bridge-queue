@@ -49,5 +49,6 @@ export function buildReleaseState(runs=[]){
  const latest=runs.find(r=>r.status==='completed');
  if(!latest)return {status:'hidden',sha:null};
  const failed=new Set(['failure','timed_out','action_required','startup_failure','stale']);
- return {status:failed.has(latest.conclusion)?'failed':'success',sha:String(latest.id||latest.head_sha||'completed')};
+ const sameRelease=runs.filter(r=>r.status==='completed'&&r.head_sha===latest.head_sha);
+ return {status:sameRelease.some(r=>failed.has(r.conclusion))?'failed':'success',sha:String(latest.id||latest.head_sha||'completed')};
 }
