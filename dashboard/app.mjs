@@ -100,4 +100,34 @@ state.route=location.hash.slice(1) in routes?location.hash.slice(1):'overview';
 $('#project-select-dialog').addEventListener('cancel',ev=>ev.preventDefault());
 boot();
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.mode==='live')void refreshRoute();});window.addEventListener('online',()=>{if(state.mode==='live')void refreshRoute();});
+// Database reconciliation is the authoritative fallback when Realtime messages are missed.
+let reconcileBusy=false;
+async function reconcileTasks(){
+ if(reconcileBusy||document.hidden||!source||state.mode!=='live'||!state.selectedProject)return;
+ reconcileBusy=true;
+ const projectId=state.selectedProject.id,route=state.route,page=state.page.number||1,status=state.status,search=state.search;
+ try{
+  if(route==='tasks'){
+   const cursor=state.page.cursors[page-1];
+   if(page>1&&!cursor)return;
+   const rows=await source.list(projectId,queuePageArgs({status,search,cursor,limit:12}));
+   if(projectId!==state.selectedProject?.id||route!==state.route||page!==(state.page.number||1)||status!==state.status||search!==state.search)return;
+   const next=queuePageResult((rows||[]).map(normalize),12);
+   if(JSON.stringify(next.rows)!==JSON.stringify(state.page.rows)||next.hasNext!==state.page.hasNext){
+    state.page.rows=next.rows;state.page.hasNext=next.hasNext;
+    if(next.nextCursor)state.page.cursors[page]=next.nextCursor;
+    state.page.loading=false;render();
+   }
+  }else if(['overview','live','history'].includes(route)){
+   const [rows,stats]=await Promise.all([source.list(projectId,{p_limit:50}),source.stats(projectId)]);
+   if(projectId!==state.selectedProject?.id||route!==state.route)return;
+   const next=(rows||[]).map(normalize);
+   if(JSON.stringify(next)!==JSON.stringify(state.rows)||JSON.stringify(stats)!==JSON.stringify(state.stats)){
+    state.rows=next;state.stats=stats;render();
+   }
+  }
+ }catch{if(state.connection==='live'){state.connection='reconnecting';render();}}
+ finally{reconcileBusy=false;}
+}
+setInterval(()=>{void reconcileTasks();},3000);
 void refreshBuildStatus();setInterval(refreshBuildStatus,15000);setInterval(()=>{if(state.route==='overview')render();renderBuild();},30000);setInterval(()=>{if(state.route==='projects'&&source&&state.mode==='live')void source.projects().then(p=>{state.projects=p||[];render();}).catch(()=>{});},3000);
