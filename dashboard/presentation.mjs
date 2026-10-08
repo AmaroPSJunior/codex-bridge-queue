@@ -42,11 +42,12 @@ export function queuePageResult(rows=[],limit=12){
  return {rows:visible,hasNext:rows.length>limit,nextCursor:visible.length?{created_at:visible.at(-1).created_at,id:visible.at(-1).id}:null};
 }
 export function buildReleaseState(runs=[]){
- const pages=runs.find(r=>r.name==='Dashboard Pages');
- if(!pages)return {status:'hidden',sha:null};
- const names=new Set(['Dashboard Pages','Bridge tests','Playwright Visual Smoke','Sync generated docs']);
- const group=runs.filter(r=>r.head_sha===pages.head_sha&&names.has(r.name));
- if(group.some(r=>['queued','in_progress','pending','waiting','requested'].includes(r.status)))return {status:'running',sha:pages.head_sha};
- if(group.some(r=>['failure','timed_out','action_required','startup_failure','stale'].includes(r.conclusion)))return {status:'failed',sha:pages.head_sha};
- return {status:'success',sha:pages.head_sha};
+ const active=new Set(['queued','in_progress','pending','waiting','requested']);
+ // Every workflow run matters, including checks started for other commits.
+ const running=runs.find(r=>active.has(r.status));
+ if(running)return {status:'running',sha:String(running.id||running.head_sha||'active')};
+ const latest=runs.find(r=>r.status==='completed');
+ if(!latest)return {status:'hidden',sha:null};
+ const failed=new Set(['failure','timed_out','action_required','startup_failure','stale']);
+ return {status:failed.has(latest.conclusion)?'failed':'success',sha:String(latest.id||latest.head_sha||'completed')};
 }
