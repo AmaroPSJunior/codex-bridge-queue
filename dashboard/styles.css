@@ -77,3 +77,16 @@
 .live-history .wins-list button{min-width:0;overflow-wrap:anywhere}
 .live-history .wins-list button>span:nth-child(2){min-width:0;overflow-wrap:anywhere}
 @media(max-width:900px){.live-workspace-grid{grid-template-columns:minmax(0,1fr)}.live-workspace-grid #live-terminal{min-height:220px;max-height:50vh}.live-history .wins-list{max-height:320px}}
+
+/* Mobile header: the project selector, Actions indicator and refresh must not force page overflow. */
+.topbar>div:first-child{min-width:0}
+.top-actions{min-width:0}
+@media(max-width:760px){
+ .topbar{height:auto;min-height:78px;gap:10px;flex-wrap:wrap;align-content:center}
+ .topbar>div:first-child{flex:1 1 120px}
+ .top-actions{flex:1 1 100%;width:100%;justify-content:flex-start;flex-wrap:wrap;gap:7px}
+ .top-actions .project-switch{flex:1 1 125px;max-width:none!important;min-width:0!important;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .top-actions .build-status{flex:0 1 auto;min-width:0;max-width:100%;white-space:normal}
+ .top-actions .refresh-button{flex:0 0 auto;min-width:0!important}
+}
+@media(max-width:420px){.topbar{padding:10px 12px}.top-actions .refresh-button span{display:none}.top-actions .refresh-button{min-width:40px!important;padding:8px!important}}
