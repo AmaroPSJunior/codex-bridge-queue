@@ -63,7 +63,8 @@ async function refreshRoute(){
   render();
  }catch{state.connection='offline';render();}
 }
-async function refresh(){if(!source)return;if(state.mode==='live'&&!state.selectedProject){render();return;}try{if(state.mode==='public')state.stats=await source.stats();else if(state.mode==='live'){const rows=await source.list(state.selectedProject.id,{p_limit:50});state.rows=(rows||[]).map(normalize);state.stats=await source.stats(state.selectedProject.id);if(state.route==='tasks'){resetPage();await loadTaskPage(1);return;}}render();}catch{state.connection='offline';render();}}
+let refreshSequence=0;
+async function refresh(){if(!source)return;if(state.mode==='live'&&!state.selectedProject){render();return;}const sequence=++refreshSequence,projectId=state.selectedProject?.id;try{if(state.mode==='public'){const stats=await source.stats();if(sequence!==refreshSequence)return;state.stats=stats;}else if(state.mode==='live'){const [rows,stats]=await Promise.all([source.list(projectId,{p_limit:50}),source.stats(projectId)]);if(sequence!==refreshSequence||projectId!==state.selectedProject?.id)return;state.rows=(rows||[]).map(normalize);state.stats=stats;if(state.route==='tasks'){const target=Math.max(1,state.page.number||1);await loadTaskPage(target);return;}}render();}catch{if(sequence!==refreshSequence)return;state.connection='offline';render();}}
 async function event(payload){
  if(!payload?.id||!source||state.mode!=='live'||!state.selectedProject)return;
  if(payload.project_id&&payload.project_id!==state.selectedProject.id)return;
@@ -98,4 +99,5 @@ document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>b.closest('di
 state.route=location.hash.slice(1) in routes?location.hash.slice(1):'overview';
 $('#project-select-dialog').addEventListener('cancel',ev=>ev.preventDefault());
 boot();
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&state.mode==='live')void refreshRoute();});window.addEventListener('online',()=>{if(state.mode==='live')void refreshRoute();});
 void refreshBuildStatus();setInterval(refreshBuildStatus,15000);setInterval(()=>{if(state.route==='overview')render();renderBuild();},30000);setInterval(()=>{if(state.route==='projects'&&source&&state.mode==='live')void source.projects().then(p=>{state.projects=p||[];render();}).catch(()=>{});},3000);
