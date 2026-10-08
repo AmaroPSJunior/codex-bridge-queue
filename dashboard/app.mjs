@@ -90,7 +90,49 @@ async function event(payload){
  render();
 }
 function liveEvent(payload){if(!payload||typeof payload!=='object'||!payload.id||!state.selectedProject||!state.rows.some(r=>r.id===payload.id))return;state.live.push(payload);if(state.live.length>500)state.live.splice(0,state.live.length-500);const row=state.rows.find(x=>x.id===payload.id);if(row&&typeof payload.percent==='number')row.progress_percent=payload.percent;if(state.route==='live'){render();requestAnimationFrame(()=>{const box=$('#live-terminal');if(box)box.scrollTop=box.scrollHeight;});}}
-async function boot(){render();let config={};try{config=await fetch('./public-config.json',{cache:'no-store'}).then(r=>r.ok?r.json():({}));}catch{}if(config.publicSummaryPath){state.rows=[];state.mode='public';source=createPublicData({config,onRefresh:refresh,onState:s=>{state.connection=s;render();}});state.stats=await source.stats();await source.subscribe();state.connection='live';render();return;}if(config.publishableKey){state.rows=[];try{source=await createData(config,{onEvent:event,onLive:liveEvent,onState:s=>{state.connection=s;render();},onRefresh:refresh,onAuthLost:()=>$('#login-dialog').showModal()});if(await source.restore()){state.mode='live';try{state.projects=await source.projects();}catch{}await source.subscribe();state.connection='live';$('#notice').hidden=true;render();if(!selectDefaultProject())showProjectChooser();return;}state.mode='live';$('#login-dialog').showModal();}catch{$('#login-dialog').showModal();}}else{state.rows=[];state.stats=null;state.mode='offline';state.connection='offline';$('#notice').hidden=true;render();}}
+let restoreTimer=null,restoreAttempts=0;
+function showLoginWhenNeeded(){const dialog=$('#login-dialog');if(!dialog.open)dialog.showModal();}
+async function recoverSavedSession(){
+ if(!source)return;
+ try{
+  const restored=await source.restore();
+  if(!restored){restoreAttempts=0;showLoginWhenNeeded();return;}
+  restoreAttempts=0;clearTimeout(restoreTimer);restoreTimer=null;
+  state.mode='live';
+  try{state.projects=await source.projects();}catch{state.connection='reconnecting';}
+  // Authentication success is independent of Realtime availability.
+  const dialog=$('#login-dialog');if(dialog.open)dialog.close();
+  $('#notice').hidden=true;
+  render();
+  if(!state.selectedProject){if(!selectDefaultProject()&&state.projects.length)showProjectChooser();}
+  try{await source.subscribe();}catch{state.connection='reconnecting';}
+  render();
+ }catch{
+  // Transient auth/network errors must not require another password.
+  state.connection='reconnecting';state.mode='live';render();
+  const notice=$('#notice');notice.hidden=false;notice.textContent='Reconectando sua sessão salva automaticamente…';
+  clearTimeout(restoreTimer);
+  restoreTimer=setTimeout(()=>void recoverSavedSession(),Math.min(30000,1500*2**Math.min(restoreAttempts++,4)));
+ }
+}
+async function boot(){
+ render();let config={};
+ try{config=await fetch('./public-config.json',{cache:'no-store'}).then(r=>r.ok?r.json():({}));}catch{}
+ if(config.publicSummaryPath){state.rows=[];state.mode='public';source=createPublicData({config,onRefresh:refresh,onState:s=>{state.connection=s;render();}});state.stats=await source.stats();await source.subscribe();state.connection='live';render();return;}
+ if(!config.publishableKey){state.rows=[];state.stats=null;state.mode='offline';state.connection='offline';$('#notice').hidden=true;render();return;}
+ state.rows=[];
+ try{
+  source=await createData(config,{onEvent:event,onLive:liveEvent,onState:s=>{state.connection=s;render();},onRefresh:refresh,onAuthLost:()=>showLoginWhenNeeded()});
+  state.mode='live';
+  await recoverSavedSession();
+ }catch{
+  // SDK loading or network failure is not evidence the session expired.
+  state.connection='reconnecting';render();
+  const notice=$('#notice');notice.hidden=false;notice.textContent='Não foi possível conectar. Tentando novamente…';
+  setTimeout(()=>void boot(),5000);
+ }
+}
+
 function selectDefaultProject(){const preferred=state.projects.find(p=>p.id==='04c581a1-a7a3-4394-912d-94e63a46ed16')||state.projects.find(p=>/codex bridge/i.test(p.name||''));if(!preferred)return false;state.selectedProject=preferred;state.rows=[];state.stats=null;state.live=[];resetPage();render();void refreshRoute();return true;}
 function showProjectChooser(){
  if(state.mode!=='live'||!source)return;
