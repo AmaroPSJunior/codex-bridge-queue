@@ -22,7 +22,17 @@ function validate(payload){
  if(!payload||Array.isArray(payload)||typeof payload!=='object'||Object.keys(payload).some(k=>!['command','args','cwd','timeout_ms'].includes(k)))throw Error('Payload inválido.');
  const {command,args=[],cwd='.',timeout_ms=10000}=payload;
  const permitted={pwd:[[]],ls:[[],['-la']]};
- if(!Object.hasOwn(permitted,command)||!Array.isArray(args)||!permitted[command].some(a=>JSON.stringify(a)===JSON.stringify(args)))throw Error('Comando/argumentos recusados.');
+ const adbTarget='10.208.220.181:5555';
+ const safeAdbArgs=[
+  ['version'],['devices','-l'],['connect',adbTarget],
+  ['-s',adbTarget,'shell','getprop','ro.build.version.release'],
+  ['-s',adbTarget,'shell','getprop','ro.build.fingerprint'],
+  ['-s',adbTarget,'shell','getprop','ro.product.model']
+ ];
+ if(!Array.isArray(args)||!(command==='adb'
+   ?safeAdbArgs.some(a=>JSON.stringify(a)===JSON.stringify(args))
+   :Object.hasOwn(permitted,command)&&permitted[command].some(a=>JSON.stringify(a)===JSON.stringify(args))))
+  throw Error('Comando/argumentos recusados.');
  if(typeof cwd!=='string'||cwd.length>256||path.isAbsolute(cwd)||cwd!=='.'&&cwd.split('/').some(x=>!x||x==='..'||x.startsWith('.')||!/^[A-Za-z0-9_-]+$/.test(x)||['logs','supabase-state','remote-state','node_modules'].includes(x)))throw Error('Diretório recusado.');
  if(!Number.isSafeInteger(timeout_ms)||timeout_ms<1||timeout_ms>MAX_TIMEOUT)throw Error('Timeout inválido.');
  return {command,args,cwd,timeout_ms};
@@ -37,7 +47,7 @@ function directory(root,relative){
 }
 function executeCommand(payload,{cwd,env=process.env,signal,progress,spawnFn=spawn,timer=setTimeout,clear=clearTimeout}={}){
  let spec,dir;
- try{spec=validate(payload);dir=directory(cwd,spec.cwd);}catch{return Promise.resolve(envelope({exit_code:null,stdout:'',stderr:'',started_at:null,completed_at:new Date().toISOString(),error_code:'invalid_input'},false));}
+ try{spec=validate(payload);dir=directory(cwd,spec.cwd);}catch{return Promise.resolve(envelope({exit_code:null,stdout:'',stderr:'',started_at:null,completed_at:new Date().toISOString(),error_code:'invalid_input'},true));}
  const started=new Date().toISOString(),clean=sanitizer(env),output={stdout:'',stderr:''},pending={stdout:'',stderr:''},decoders={stdout:new StringDecoder('utf8'),stderr:new StringDecoder('utf8')};
  let child,reason=null,size=0,settled=false,deadline,grace;
  const promise=new Promise(resolve=>{
