@@ -25,6 +25,7 @@ test('dashboard build versions app, css and every local module import with one r
     assert.ok(app.includes("./core.mjs?v="+v[1]));
     assert.ok(app.includes("./presentation.mjs?v="+v[1]));
     assert.ok(app.includes("./data.mjs?v="+v[1]));
+    assert.ok(app.includes("./sound.mjs?v="+v[1]));
     assert.ok(core.includes("./shared.mjs?v="+v[1]));
   }finally{fs.rmSync(temp,{recursive:true,force:true});}
 });

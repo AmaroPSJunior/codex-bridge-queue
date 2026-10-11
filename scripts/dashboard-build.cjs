@@ -22,7 +22,7 @@ async function build(){
  const publicConfig=config();
  let snapshot;
  if(publicConfig.publicSummaryPath){const file=path.join(dir,'public-summary.json');const st=fs.lstatSync(file);if(!st.isFile()||st.isSymbolicLink()||st.size>65536)throw Error('Invalid public aggregate snapshot');snapshot=JSON.parse(fs.readFileSync(file,'utf8'));(await import('../dashboard/data.mjs')).publicSummary(snapshot);}
- const names=['presentation.mjs','index.html','styles.css','app.mjs','core.mjs','data.mjs','charts.mjs','demo.mjs','shared.mjs','favicon.svg'];
+ const names=['sound.mjs','presentation.mjs','index.html','styles.css','app.mjs','core.mjs','data.mjs','charts.mjs','demo.mjs','shared.mjs','favicon.svg'];
  const allowed=new Set([...names,'public-config.json','public-summary.json','.nojekyll']);
  const out=path.join(dir,'dist');
  if(fs.existsSync(out)&&(!fs.lstatSync(out).isDirectory()||fs.lstatSync(out).isSymbolicLink()))throw Error('Output must be a regular directory');
