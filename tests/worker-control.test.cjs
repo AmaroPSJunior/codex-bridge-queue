@@ -5,3 +5,20 @@ function fixture(t){const root=fs.mkdtempSync(path.join(os.tmpdir(),'bridge-cont
 test('controle restart é durável/idempotente e não passa pela IA',t=>{const f=fixture(t);const a=ctl.control(f.state,'{"bridge_control":"restart"}',{id});assert.equal(a.code,0);const file=path.join(f.dir,id+'.json'),before=fs.readFileSync(file,'utf8');ctl.control(f.state,'{"bridge_control":"restart"}',{id});assert.equal(fs.readFileSync(file,'utf8'),before);assert.equal(fs.statSync(file).mode&511,384);assert.equal(fs.statSync(f.dir).mode&511,448);assert.equal(ctl.control(f.state,'{"bridge_control":"stop"}',{id}).code,1);assert.equal(ctl.control(f.state,'ordinary instruction',{id}),null);});
 test('drain aguarda publicação, recibos e fence; PID antigo nunca autoriza parada',t=>{const f=fixture(t);ctl.control(f.state,'{"bridge_control":"restart"}',{id});ctl.save(path.join(f.dir,'drain.json'),{id,pid:123,nonce:'test'});assert.equal(ctl.checkpoint(f.state,f.root,456),false);assert.equal(ctl.checkpoint(f.state,f.root,123),true);assert.equal(fs.existsSync(path.join(f.dir,'ready.json')),false);ctl.confirm(f.state,id);fs.mkdirSync(path.join(f.root,'.bridge-workspace-lock'));ctl.checkpoint(f.state,f.root,123);assert.equal(fs.existsSync(path.join(f.dir,'ready.json')),false);fs.rmdirSync(path.join(f.root,'.bridge-workspace-lock'));const receipts=path.join(f.state,'pending-results');fs.mkdirSync(receipts);const receipt=path.join(receipts,'a'.repeat(64)+'.json');fs.writeFileSync(receipt,'{}');ctl.checkpoint(f.state,f.root,123);assert.equal(fs.existsSync(path.join(f.dir,'ready.json')),false);fs.unlinkSync(receipt);ctl.checkpoint(f.state,f.root,123);assert.deepEqual(ctl.read(path.join(f.dir,'ready.json')),{id,pid:123,nonce:'test'});});
 test('status inclui ack sem credencial e symlinks são recusados',t=>{const f=fixture(t);ctl.control(f.state,'{"bridge_control":"restart"}',{id});const file=path.join(f.dir,id+'.json'),r=ctl.read(file);ctl.save(file,{...r,status:'acknowledged',ack_at:'now'});assert.match(ctl.control(f.state,'{"bridge_control":"status"}',{}).stdout,/acknowledged/);fs.unlinkSync(file);fs.symlinkSync('/does-not-exist',file);assert.equal(ctl.control(f.state,'{"bridge_control":"status"}',{}).code,1);});
+
+test('reinício local explícito aguarda idle, recibos e fence sem confirmação remota',t=>{
+ const f=fixture(t),localId='00000000-0000-4000-8000-000000000072';
+ const record={id:localId,version:1,command:'restart',source:'local',status:'draining',pid:123,nonce:'local-test'};
+ fs.mkdirSync(f.dir,{mode:0o700});ctl.save(path.join(f.dir,localId+'.json'),record);
+ ctl.save(path.join(f.dir,'drain.json'),{id:localId,pid:123,nonce:'local-test'});
+ assert.equal(ctl.checkpoint(f.state,f.root,456),false);
+ fs.mkdirSync(path.join(f.root,'.bridge-workspace-lock'));
+ assert.equal(ctl.checkpoint(f.state,f.root,123),true);
+ assert.equal(fs.existsSync(path.join(f.dir,'ready.json')),false);
+ fs.rmdirSync(path.join(f.root,'.bridge-workspace-lock'));
+ const receipts=path.join(f.state,'pending-results');fs.mkdirSync(receipts);
+ const receipt=path.join(receipts,'a'.repeat(64)+'.json');fs.writeFileSync(receipt,'{}');
+ ctl.checkpoint(f.state,f.root,123);assert.equal(fs.existsSync(path.join(f.dir,'ready.json')),false);
+ fs.unlinkSync(receipt);ctl.checkpoint(f.state,f.root,123);
+ assert.deepEqual(ctl.read(path.join(f.dir,'ready.json')),{id:localId,pid:123,nonce:'local-test'});
+});
