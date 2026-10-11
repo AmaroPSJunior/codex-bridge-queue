@@ -40,6 +40,6 @@ test('terminal success advances percentage and remains replayable',()=>{
 test('terminal success sets matching progress label and replay allows it',()=>{
  const worker=fs.readFileSync(path.join(root,'supabase-worker.js'),'utf8');
  const receipt=fs.readFileSync(path.join(root,'executors/result-receipt.js'),'utf8');
- assert.match(worker,/progress_message:'Codex \\| 100% \\| Concluída'/);
+ assert.ok(worker.includes("progress_message:'Codex | 100% | Concluída'"));
  assert.match(receipt,/'progress_message'/);
 });
