@@ -4,6 +4,7 @@
 process.env.CODEX_BRIDGE_PERMISSIONS_PROFILE ||= 'bridge-git';
 const fs=require('fs'),path=require('path'),{spawn,spawnSync}=require('child_process');
 const workerControl=require('./executors/worker-control');
+const {createGate}=require('./executors/auto-continue');
 const {legacyQueuePath}=require('./executors/device-routing');
 const {mode:executionMode,executeCommand}=require('./executors/command');
 const {executePlan}=require('./executors/plan');
@@ -29,6 +30,7 @@ const pollSeconds=Number(sb.pollSeconds||config.pollSeconds||15);
 const DEFAULT_EXECUTION_TIMEOUT_MS=900000;
 fs.mkdirSync(STATE,{recursive:true,mode:0o700}); process.umask(0o077);
 const speak=createSpeaker({spawn,setTimeout,clearTimeout,env:process.env});
+const autoGate=createGate({dir:STATE,env:process.env});
 function log(event,data={}){console.log(JSON.stringify({at:new Date().toISOString(),transport:'supabase',event,...data}));}
 function headers(extra={}){return {apikey:key,Authorization:'Bearer '+key,'Content-Type':'application/json',...extra};}
 async function request(route,options={}){
@@ -317,6 +319,7 @@ async function finish(task,run,progress){
   });
   // Receipt is removed only after a read confirms publication (recoverResults).
   if(process.env.CODEX_BRIDGE_REPLAY_PUBLICATION!=='1'&&(['antigravity','local','groq'].includes(run.provider)||(run.providerSelection?.provider==='codex'&&(lifecycleSettings(process.env,config).validate))))void speak(displayTask(task),{status:ok?'completed':'failed',answer:result,error});
+  autoGate.record(task.id,finalStatus);
   log('execution_finish',{id:task.id,taskNumber:displayTask(task).number,status:finalStatus});
   return {...taskSummary({...task,status:finalStatus}),result,error,...run.gitMetadata};
 }
@@ -359,7 +362,8 @@ async function main(){
       }
       const project=await nextProjectProvision();
       if(project){await provisionProject(project);continue;}
-      const task=await next();
+      const task=autoGate.canClaim()?await next():null;
+      if(!autoGate.canClaim())log('autocontinue_paused',autoGate.status());
       if(process.env.BRIDGE_SUPERVISOR_GENERATION)workerControl.save(path.join(STATE,'control','boot.json'),{pid:process.pid,generation:process.env.BRIDGE_SUPERVISOR_GENERATION});
       if(task){
         const claimed=await claim(task);
