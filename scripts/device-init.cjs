@@ -21,7 +21,7 @@ function init({home=os.homedir(),name='Central BYD Dolphin Plus',kind='android_h
 }
 function registration(home=os.homedir()){
  const root=path.join(home,'.config','codex-bridge');
- const files=fs.readdirSync(root).filter(n=>/^device-[a-f0-9-]+\\.json$/.test(n));
+ const files=fs.readdirSync(root).filter(n=>/^device-[a-f0-9-]+\.json$/.test(n));
  if(files.length!==1)throw Error('Expected exactly one device identity');
  const file=path.join(root,files[0]),st=fs.lstatSync(file);
  if(!st.isFile()||(st.mode&0o077)!==0)throw Error('Private credential permissions unsafe');
