@@ -30,7 +30,13 @@ const crypto=require('node:crypto');
   await db.exec("rollback");
   const claim=(id,token)=>rows('select * from bridge_device_claim($1,$2)',[id,token]);
   assert.equal((await claim(a,tokenB)).length,0);
-  const [first]=await claim(a,tokenA);
+  // An actual low-privilege client may claim via an authenticated RPC,
+  // without receiving direct SELECT or UPDATE on the tasks table.
+  await db.exec("begin; set local role anon;");
+  const anonClaim=await claim(a,tokenA);
+  await db.exec("commit");
+  assert.equal(anonClaim.length,1);
+  const [first]=anonClaim;
   assert.equal(first.task_id,ta);
   assert.equal((await claim(a,tokenA)).length,0);
   const [second]=await claim(b,tokenB);
