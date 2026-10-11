@@ -9,6 +9,13 @@ on:
       - 'tests/device-worker-pilot.test.cjs'
       - 'tests/device-trigger-compat-sql.cjs'
       - '.github/workflows/device-claim-sql.yml'
+  push:
+    branches: ['proposal/**']
+    paths:
+      - 'database/multi-device-*.sql'
+      - 'tests/device-*.cjs'
+      - 'executors/device-worker-pilot.cjs'
+      - '.github/workflows/device-claim-sql.yml'
   workflow_dispatch:
 jobs:
   device-claims:
