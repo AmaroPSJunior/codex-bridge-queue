@@ -1,4 +1,4 @@
-# Ações tipadas de dispositivo (implantação pendente)
+# Ações tipadas de dispositivo
 
 Tarefas existentes continuam compatíveis. Para operações determinísticas, usar
 `execution_mode: "command"` e `command_payload` estruturado, nunca texto shell:
@@ -23,7 +23,32 @@ automaticamente versão com assinatura incompatível. Desinstalação restringe-
 explicitamente ao usuário 0 e ao pacote com.byd.carcontrol. Ambas exigem APK
 validado disponível antes de agir. Não há restauração automática de dados.
 
-## Autorização: bloqueada por padrão
+## Exceção autorizada pelo proprietário: somente instalação fixada
+
+`apk103.install` para **10.23.201.181:5555**, exclusivamente com o arquivo/hash
+103 acima e pacote com.byd.carcontrol, dispensa a página/senha e assinatura de
+consentimento personalizada. Esta política não permite escolher outro APK,
+pacote, caminho, comando ou flags. Não altera permissões Android, pareamento ADB,
+proteções OEM, marcha ou velocidade. O operador/cliente deve confirmar condições
+presenciais atuais antes de solicitar a instalação; IP e modelo não comprovam P
+nem imobilidade. Não reutilizar confirmação histórica.
+
+O executor exige UUID válido e reserva um recibo exclusivo antes da operação.
+Confere estado ADB `device`, modelo `BYD AUTO`, SDK >=24, SHA256 local antes da
+execução e SHA256 do `base.apk` após instalar. Usa somente `install --user 0 -r`.
+Erro de assinatura ou outra recusa Android termina a tarefa sem desinstalação,
+sem apagar dados e sem retry automático. Não abre o aplicativo.
+
+Payload da exceção (cliente autenticado da fila, modo command):
+
+```json
+{"action":"apk103.install","target":"10.23.201.181:5555"}
+```
+
+Para instalação em outro endereço, ou **qualquer desinstalação**, permanece o
+consentimento assinado descrito abaixo. Nenhuma ação genérica de instalação existe.
+
+## Autorização assinada para ações fora da exceção
 
 O emissor foi implementado em `integrations/device-consent`, com autenticação local
 por senha (scrypt), Host/Origin exatos, limite de tentativas e página sem scripts
@@ -76,7 +101,7 @@ não é repetida automaticamente. Um recibo reservado exige inspeção humana, s
 apagar recibo para tentar novamente. Auditoria fica em
 `~/.config/codex-bridge/device-actions` (0700; registros 0600), sem autorização,
 chaves ou saída bruta. Aplicar retenção operacional: não há limpeza automática.
-Cada processo tem timeout de 60s, saída limitada a 64 KiB e sanitização, sem shell.
+A auditoria distingue a exceção autorizada do consentimento assinado. Cada processo tem timeout de 60s, saída limitada a 64 KiB e sanitização, sem shell.
 O lock de workspace existente é mantido; término incerto conserva o bloqueio.
 
 ## Operação
