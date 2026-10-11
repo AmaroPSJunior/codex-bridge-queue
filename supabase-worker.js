@@ -136,7 +136,8 @@ function executionTimeoutMs(){
 }
 function runCodexProcess(prompt,task={},progress,workspaceToken){
   return new Promise(resolve=>{
-    const child=spawn(path.join(process.env.PREFIX||'/data/data/com.termux/files/usr','bin/codex-bridge'),[prompt],{
+    // Execute the bridge from this checkout: a global CLI may still point at an older worktree.
+    const child=spawn(process.execPath,[path.join(DIR,'bridge.js'),prompt],{
       shell:false,stdio:['ignore','pipe','pipe'],env:{...process.env,...(workspaceToken?{CODEX_BRIDGE_WORKSPACE_TOKEN:workspaceToken}:{}),...(lifecycleSettings(process.env,config).validate?{CODEX_BRIDGE_TTS:'0'}:{}),CODEX_BRIDGE_DIAGNOSTIC_FILE:path.join(STATE,'progress',String(task.id||'legacy')+'.diagnostic.json'),CODEX_BRIDGE_JSON:'1',CODEX_BRIDGE_PROGRESS:progress?'1':'0',CODEX_BRIDGE_TASK_TRANSPORT:'supabase',CODEX_BRIDGE_TASK_NUMBER:displayTask(task).number||'',CODEX_BRIDGE_TASK_TITLE:displayTask(task).title,CODEX_BRIDGE_THREAD_FILE:path.join(DIR,'supabase-thread-id')}
     });
     let stdout='',stderr='',settled=false,outputDone=Promise.resolve();
