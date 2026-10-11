@@ -18,6 +18,13 @@ const crypto=require('node:crypto');
   await db.exec(fs.readFileSync('database/multi-device-phase2-draft.sql','utf8'));
   await rows("insert into bridge_devices(id,display_name,device_kind,enabled,token_sha256) values ($1,'phone','android_phone',true,$2),($3,'BYD','android_head_unit',true,$4)",[a,sha(tokenA),b,sha(tokenB)]);
   await rows("insert into bridge_tasks(id,task_number,instruction,status,executor_device_id,command_payload) values ($1,1,'phone','queued',$2,'{\"command\":\"pwd\"}'),($3,2,'BYD','queued',$4,'{\"command\":\"pwd\"}')",[ta,a,tb,b]);
+  // Use the actual low-privilege anon role: it must not inspect or mutate
+  // task rows directly, but can invoke the authenticated claim RPC.
+  await db.exec("begin; set local role anon;");
+  await assert.rejects(rows('select * from public.bridge_tasks'));
+  await assert.rejects(rows("update public.bridge_tasks set status='running'"));
+  assert.equal((await rows("select count(*)::int as count from public.bridge_device_claim($1,$2)",[a,tokenB]))[0].count,0);
+  await db.exec("rollback");
   const claim=(id,token)=>rows('select * from bridge_device_claim($1,$2)',[id,token]);
   assert.equal((await claim(a,tokenB)).length,0);
   const [first]=await claim(a,tokenA);
