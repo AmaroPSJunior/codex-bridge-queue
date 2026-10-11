@@ -15,6 +15,7 @@ function harness(t,file,options={}) {
   calls.push({command,args,opts,child});return child;
  }
  const context={Buffer,URL,AbortSignal,AbortController,console:{log:s=>logs.push(s),error:s=>logs.push(s)},__dirname:dir,__filename:path.join(dir,file),process:proc,module:{exports:{}},exports:{},fetch:options.fetch||(()=>{throw Error('Unexpected network call');}),setTimeout:(fn,ms)=>{const x={fn,ms,due:virtualNow+ms,unref(){return this;}};timers.push(x);return x;},clearTimeout:x=>{if(x)x.cleared=true;},setInterval:(fn,ms)=>{timers.push({fn,ms});},require:name=>{
+  if(name==='./executors/auto-continue')return options.modules?.[name]||require('../executors/auto-continue');
   if(name==='./executors/device-routing')return require('../executors/device-routing');
   if(name==='./executors/command')return options.modules?.[name]||require('../executors/command');
   if(name==='./executors/plan')return options.modules?.[name]||require('../executors/plan');
