@@ -20,7 +20,16 @@ let timer;
   const device=task.execution_mode==='command'&&task.command_payload?.action;
   try{run=legacyControl?{code:1,stdout:JSON.stringify({status:'failed',answer:'',error:'Runtime v2: use o controle local autenticado do supervisor; nenhum restart foi solicitado.',workspaceReleased:true}),stderr:''}:device?await require('../executors/command').executeCommand(task.command_payload,{cwd:path.resolve(__dirname,'..'),env:process.env,taskId:task.id,progress}):await engine.execute(task.instruction,task,progress);}
   catch{throw Error('Executor failed; effects require review');}
-  run=JSON.parse(clean(JSON.stringify(run)));
+  // Redact text leaves, never pass the serialized protocol envelope to a line sanitizer.
+  function redact(value){
+   if(typeof value==='string')return value.split('\n').map(clean).join('\n');
+   if(Array.isArray(value))return value.map(redact);
+   if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([k,v])=>[k,redact(v)]));
+   return value;
+  }
+  let envelope;try{envelope=JSON.parse(run.stdout);}catch{}
+  run=redact(run);
+  run.stdout=envelope?JSON.stringify(redact(envelope)):redact(run.stdout||'');
   save(path.join(root,'result.json'),run); // fsync before publication: never repeat execution to publish
   try{await engine.finish(task,run,progress);}catch{ /* existing private receipt remains */ }
  }else{
