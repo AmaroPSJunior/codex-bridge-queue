@@ -32,18 +32,27 @@ async function rpc(cfg,name,body,fetcher=fetch){
  if(!response.ok)throw Error('RPC '+name+' failed with HTTP '+response.status);
  return response.json();
 }
-async function one(cfg,{fetcher=fetch,cwd=process.cwd()}={}){
+async function one(cfg,{fetcher=fetch,cwd=process.cwd(),retryPause=pause}={}){
  const claimed=await rpc(cfg,'bridge_device_claim',{p_device_id:cfg.id,p_token:cfg.token},fetcher);
  if(!Array.isArray(claimed)||!claimed.length)return 'idle';
  const task=claimed[0];
  // Always finalize a claimed task (unless network fails; then it remains uncertain).
  const ok=isAllowed(task);
  const response=ok?'pwd: '+path.resolve(cwd):'Device command rejected by read-only pilot allowlist';
- const complete=await rpc(cfg,'bridge_device_complete',{
-  p_device_id:cfg.id,p_token:cfg.token,p_task_id:task.task_id,
-  p_claim_nonce:task.claim_nonce,p_success:ok,p_result:response
- },fetcher);
- if(complete!==true)throw Error('Claim completion was not accepted');
+ const completion={p_device_id:cfg.id,p_token:cfg.token,p_task_id:task.task_id,
+  p_claim_nonce:task.claim_nonce,p_success:ok,p_result:response};
+ // Retry only the identical completion, never claim or execute again.
+ // Phase3 makes an identical committed completion return true.
+ for(let attempt=0;attempt<3;attempt++){
+  try{
+   const accepted=await rpc(cfg,'bridge_device_complete',completion,fetcher);
+   if(accepted!==true)throw Object.assign(Error('Completion refused'),{refused:true});
+   return ok?'completed':'rejected';
+  }catch(e){
+   if(e.refused||attempt===2)throw Error('Reservation uncertain; administrative reconciliation required');
+   await retryPause(1000*(attempt+1));
+  }
+ }
  return ok?'completed':'rejected';
 }
 async function main(){
@@ -51,9 +60,8 @@ async function main(){
  // Explicit opt-in. This worker must NEVER run on the legacy phone supervisor.
  if(process.env.CODEX_DEVICE_WORKER_ENABLED!=='1')throw Error('Device worker not enabled');
  for(;;){
-  try{await one(cfg);}catch(e){
-   console.error('Device worker cycle failed (no secrets or task contents logged)');
-  }
+  // Stop on an uncertain reservation; do not accumulate claims.
+  await one(cfg);
   await pause(15000);
  }
 }

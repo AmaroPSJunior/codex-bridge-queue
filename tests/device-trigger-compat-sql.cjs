@@ -6,7 +6,7 @@ const crypto=require('node:crypto');
 (async()=>{
  const db=new PGlite();
  try {
-  await db.exec("create role anon nologin; create role authenticated nologin;");
+  await db.exec("create role anon nologin; create role authenticated nologin; create role service_role nologin;");
   await db.exec("create table public.bridge_tasks(id uuid primary key,task_number bigint,instruction text not null,title text not null default 'Tarefa',status text not null,execution_mode text default 'command',command_payload jsonb,executor_device_id uuid,created_at timestamptz default now(),claimed_at timestamptz,updated_at timestamptz,completed_at timestamptz,result text,error text,progress_seq bigint not null default 0,recent_output text,progress_message text,last_progress_at timestamptz,last_flush_reason text,last_flush_line_count int)");
   for (const [file,func,trigger] of [
    ['database/task-identity.sql','bridge_tasks_human_identity',"create trigger bridge_tasks_human_identity before insert or update on bridge_tasks for each row execute function public.bridge_tasks_human_identity()"],
@@ -27,6 +27,7 @@ const crypto=require('node:crypto');
   await db.exec("create trigger bridge_tasks_retention_100_update after update on bridge_tasks for each statement execute function bridge_dashboard_private.retain()");
   await db.exec(fs.readFileSync('database/multi-device-phase1.sql','utf8'));
   await db.exec(fs.readFileSync('database/multi-device-phase2-draft.sql','utf8'));
+  await db.exec(fs.readFileSync('database/multi-device-phase3-recovery-proposal.sql','utf8'));
   const token='z'.repeat(48),id='10000000-0000-4000-8000-000000000001',task='20000000-0000-4000-8000-000000000002';
   const hash=crypto.createHash('sha256').update(token).digest('hex');
   await db.query("insert into bridge_devices(id,display_name,device_kind,enabled,token_sha256) values($1,'BYD','android_head_unit',true,$2)",[id,hash]);
