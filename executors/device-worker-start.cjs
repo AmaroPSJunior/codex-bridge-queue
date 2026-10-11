@@ -3,10 +3,10 @@
 // No shell commands; no credentials in arguments/logs.
 const fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const {main}=require('./device-worker-pilot.cjs');
-function loadPrivate(file,env=process.env){
- const home=fs.realpathSync(os.homedir());
+function loadPrivate(file,env=process.env,homeDir=os.homedir()){
+ const home=fs.realpathSync(homeDir);
  const safeRoot=path.join(home,'.config','codex-bridge');
- const resolved=path.resolve(file);
+ const resolved=fs.realpathSync(file);
  const root=fs.realpathSync(safeRoot);
  if(resolved!==path.join(root,path.basename(resolved)))throw Error('Private config must be in dedicated directory');
  const dirStat=fs.lstatSync(root);
