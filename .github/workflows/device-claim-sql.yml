@@ -4,6 +4,7 @@ on:
     paths:
       - 'database/multi-device-*.sql'
       - 'tests/device-claim-sql.cjs'
+      - 'tests/device-trigger-compat-sql.cjs'
       - '.github/workflows/device-claim-sql.yml'
   workflow_dispatch:
 jobs:
@@ -20,3 +21,5 @@ jobs:
         run: npm install --no-save --ignore-scripts --no-audit --no-fund @electric-sql/pglite
       - name: Test real SQL functions in isolated PostgreSQL
         run: node tests/device-claim-sql.cjs
+      - name: Test trigger compatibility in isolated PostgreSQL
+        run: node tests/device-trigger-compat-sql.cjs
