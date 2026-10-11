@@ -9,7 +9,7 @@ export function quotaLabel(task){return typeof task.quota_remaining_percent==='n
 // Estimates use only existing sanitized stage messages, never token-consuming inference.
 export function taskProgress(task){
  const terminal={succeeded:'Concluída',failed:'Execução interrompida por falha',cancelled:'Cancelada'};
- if(terminal[task.status])return {value:task.status==='succeeded'?100:null,label:terminal[task.status],estimated:false};
+ if(terminal[task.status])return {value:100,label:terminal[task.status],estimated:false};
  if(task.status==='queued')return {value:0,label:'Aguardando início',estimated:true};
  const message=String(task.progress_message||'').toLowerCase();
  const stage=[[/finalizando|finalizing/,95,'Finalizando'],[/git push|publicando|publishing/,90,'Publicando no GitHub'],[/git commit|fazendo commit|committing/,80,'Fazendo commit'],[/executando testes|running tests|npm test|validando testes/,65,'Executando testes'],[/preparando|preparing/,10,'Preparando execução']].find(([pattern])=>pattern.test(message));

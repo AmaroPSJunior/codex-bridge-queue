@@ -1,10 +1,26 @@
 import {normalize,mergeTask,applyTaskChange,filterTasks,statistics,date,duration,seconds,statusLabel,escape as e} from './core.mjs';
 import {taskProgress,taskActivity,canDeleteTask,confirmTaskDeletion,removeTaskRows,queuePageArgs,queuePageResult,buildReleaseState} from './presentation.mjs';
 import {createData,createPublicData} from './data.mjs';
+import {createCompletionSound} from './sound.mjs';
 
 const $=s=>document.querySelector(s), main=$('#main'), nav=$('#nav');
 const state={rows:[],stats:null,projects:[],selectedProject:null,mode:'offline',route:'overview',search:'',status:'all',connection:'offline',live:[],page:{number:1,rows:null,cursors:[null],hasNext:false,loading:false},build:{status:'hidden',sha:null,visibleUntil:0}};
 let source=null;
+let soundStorage;try{soundStorage=window.localStorage;}catch{}
+const completionSound=createCompletionSound({storage:soundStorage,createContext:()=>new (window.AudioContext||window.webkitAudioContext)(),onChange:renderSound});
+function renderSound(){
+ const button=$('#completion-sound'),hint=$('#completion-sound-hint');
+ const {enabled,ready}=completionSound.state();
+ button.setAttribute('aria-pressed',String(enabled));
+ button.textContent=enabled?'Desativar som':'Ativar som';
+ $('#unlock-sound').hidden=!enabled||ready;
+ hint.textContent=enabled&&ready?'Aviso sonoro para sucesso, falha ou cancelamento.':enabled?'Clique para liberar o áudio neste navegador.':'Som desativado. Ative para ouvir novas finalizações.';
+}
+$('#completion-sound').onclick=()=>{if(completionSound.state().enabled)completionSound.disable();else void completionSound.enable();};
+$('#unlock-sound').onclick=()=>void completionSound.enable();
+renderSound();
+function observeCompletion(rows){if(state.mode==='live'&&state.selectedProject)completionSound.observe(rows.filter(row=>row.project_id===state.selectedProject.id));}
+
 let liveHistoryRows=[],liveHistoryProject=null,liveHistoryBusy=false;
 async function loadLiveHistory(){
  if(liveHistoryBusy||state.route!=='live'||!source||state.mode!=='live'||!state.selectedProject)return;
@@ -19,7 +35,7 @@ async function loadLiveHistory(){
    const last=batch.at(-1);if(!last||cursor?.id===last.id)break;
    cursor={created_at:last.created_at,id:last.id};
   }
-  liveHistoryRows=all;liveHistoryProject=projectId;render();
+  observeCompletion(all);liveHistoryRows=all;liveHistoryProject=projectId;render();
  }catch{}finally{liveHistoryBusy=false;}
 }
 let liveDetails={};let selectedLiveId=null;let detailFetchBusy=false;
@@ -80,7 +96,7 @@ function settings(){const s=stats();return '<section class="simple-page"><div cl
 function render(){const historyScroll=state.route==='live'?document.querySelector('.live-history .wins-list')?.scrollTop:null;navHtml();const sw=$('#project-switch');if(sw){sw.hidden=!state.selectedProject;sw.textContent=state.selectedProject?'◆ '+state.selectedProject.name:'';}if(state.mode==='live'&&!state.selectedProject&&state.route!=='projects'){main.innerHTML='<div class="empty-state big">Selecione um projeto para abrir o dashboard.</div>';$('#updated').textContent='aguardando projeto';return;}main.innerHTML=state.route==='overview'?overview():state.route==='live'?livePage():state.route==='tasks'?taskPage(false):state.route==='history'?taskPage(true):state.route==='projects'?projectsPage():settings();bind();if(historyScroll!==null){const list=document.querySelector('.live-history .wins-list');if(list)list.scrollTop=historyScroll;}$('#updated').textContent='Atualizado '+new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});}
 let searchTimer;function bind(){main.querySelectorAll('[data-live-task]').forEach(btn=>btn.onclick=()=>{selectedLiveId=btn.dataset.liveTask;render();void loadLiveDetail();});main.querySelectorAll('[data-task]').forEach(el=>el.onclick=()=>openDetail(el.dataset.task));const pf=$('#project-form');if(pf){const gh=pf.elements.createGithub,fields=$('#github-fields');gh.onchange=()=>fields.hidden=!gh.checked;pf.onsubmit=async ev=>{ev.preventDefault();const err=$('#project-error');err.textContent='';const fd=new FormData(pf);try{const created=await source.createProject({name:fd.get('name'),description:fd.get('description'),createGithub:fd.get('createGithub')==='on',repoName:fd.get('repoName'),visibility:fd.get('visibility')});state.projects=[created,...state.projects.filter(p=>p.id!==created.id)];state.selectedProject=created;state.rows=[];state.stats=null;state.search='';state.status='all';state.live=[];resetPage();render();void refreshRoute();}catch(x){err.textContent=x?.message||'Não foi possível criar o projeto.';}};}const s=$('#task-search');if(s)s.oninput=()=>{state.search=s.value;if(state.route==='tasks'){clearTimeout(searchTimer);searchTimer=setTimeout(()=>{resetPage();void loadTaskPage(1);},250);}else{$('#task-results').innerHTML=taskRows(true);bind();}};const st=$('#task-status');if(st)st.onchange=()=>{state.status=st.value;if(state.route==='tasks'){resetPage();void loadTaskPage(1);}else{$('#task-results').innerHTML=taskRows(true);bind();}};const prev=$('#page-prev');if(prev)prev.onclick=()=>void loadTaskPage(state.page.number-1);const next=$('#page-next');if(next)next.onclick=()=>void loadTaskPage(state.page.number+1);const p=$('#pause-follow');if(p)p.onclick=()=>{const v=p.getAttribute('aria-pressed')==='true';p.setAttribute('aria-pressed',String(!v));document.body.classList.toggle('paused',!v);};}
 function resetPage(){state.page={number:1,rows:null,cursors:[null],hasNext:false,loading:false};}
-async function loadTaskPage(number=1){if(!source||state.mode!=='live'||!state.selectedProject||number<1)return;const cursor=state.page.cursors[number-1];if(number>1&&!cursor)return;state.page.loading=true;render();try{const rows=await source.list(state.selectedProject.id,queuePageArgs({status:state.status,search:state.search,cursor,limit:12}));const page=queuePageResult((rows||[]).map(normalize),12);state.page.number=number;state.page.rows=page.rows;state.page.hasNext=page.hasNext;if(page.nextCursor)state.page.cursors[number]=page.nextCursor;state.page.loading=false;render();}catch{state.page.loading=false;render();}}
+async function loadTaskPage(number=1){if(!source||state.mode!=='live'||!state.selectedProject||number<1)return;const cursor=state.page.cursors[number-1];if(number>1&&!cursor)return;state.page.loading=true;render();try{const rows=await source.list(state.selectedProject.id,queuePageArgs({status:state.status,search:state.search,cursor,limit:12}));const page=queuePageResult((rows||[]).map(normalize),12);observeCompletion(page.rows);state.page.number=number;state.page.rows=page.rows;state.page.hasNext=page.hasNext;if(page.nextCursor)state.page.cursors[number]=page.nextCursor;state.page.loading=false;render();}catch{state.page.loading=false;render();}}
 function renderBuild(){const el=$('#build-status');if(!el)return;const b=state.build;el.hidden=false;const status=b.status==='success'&&Date.now()>b.visibleUntil?'idle':b.status==='hidden'?'unknown':b.status;el.className='build-status '+status;el.setAttribute('aria-label',status==='running'?'GitHub Actions em andamento':status==='success'?'Build do dashboard concluído':status==='failed'?'Falha no build do dashboard':status==='unknown'?'Situação do build indisponível':'Nenhum build em execução identificado');el.innerHTML='<i aria-hidden="true"></i><span>'+(status==='running'?'Actions em execução…':status==='success'?'✓ Publicado':status==='failed'?'⚠ Build falhou':status==='unknown'?'Build · sem dados':'Build · em dia')+'</span>';}
 let buildPollTimer=null,buildRequestBusy=false;
 function scheduleBuildStatus(delay){clearTimeout(buildPollTimer);buildPollTimer=setTimeout(()=>void refreshBuildStatus(),delay);}
@@ -113,13 +129,13 @@ async function refreshRoute(){
   if(state.route==='tasks'){resetPage();await loadTaskPage(1);return;}
   const requests=[source.list(state.selectedProject.id,{p_limit:50}),source.stats(state.selectedProject.id),source.projects?source.projects():Promise.resolve([])];
   const [rows,summary,projects]=await Promise.all(requests);
-  state.rows=(rows||[]).map(normalize);state.stats=summary;state.projects=projects||[];
+  state.rows=(rows||[]).map(normalize);observeCompletion(state.rows);state.stats=summary;state.projects=projects||[];
   if(state.route==='history'&&!['all','succeeded','failed','cancelled'].includes(state.status))state.status='all';
   render();if(state.route==='live')void loadLiveHistory();
  }catch{state.connection='offline';render();}
 }
 let refreshSequence=0;
-async function refresh(){if(!source)return;if(state.mode==='live'&&!state.selectedProject){render();return;}const sequence=++refreshSequence,projectId=state.selectedProject?.id;try{if(state.mode==='public'){const stats=await source.stats();if(sequence!==refreshSequence)return;state.stats=stats;}else if(state.mode==='live'){const [rows,stats]=await Promise.all([source.list(projectId,{p_limit:50}),source.stats(projectId)]);if(sequence!==refreshSequence||projectId!==state.selectedProject?.id)return;state.rows=(rows||[]).map(normalize);state.stats=stats;if(state.route==='tasks'){const target=Math.max(1,state.page.number||1);await loadTaskPage(target);return;}}render();}catch{if(sequence!==refreshSequence)return;state.connection='offline';render();}}
+async function refresh(){if(!source)return;if(state.mode==='live'&&!state.selectedProject){render();return;}const sequence=++refreshSequence,projectId=state.selectedProject?.id;try{if(state.mode==='public'){const stats=await source.stats();if(sequence!==refreshSequence)return;state.stats=stats;}else if(state.mode==='live'){const [rows,stats]=await Promise.all([source.list(projectId,{p_limit:50}),source.stats(projectId)]);if(sequence!==refreshSequence||projectId!==state.selectedProject?.id)return;state.rows=(rows||[]).map(normalize);observeCompletion(state.rows);state.stats=stats;if(state.route==='tasks'){const target=Math.max(1,state.page.number||1);await loadTaskPage(target);return;}}render();}catch{if(sequence!==refreshSequence)return;state.connection='offline';render();}}
 async function event(payload){
  if(!payload?.id||!source||state.mode!=='live'||!state.selectedProject)return;
  if(payload.project_id&&payload.project_id!==state.selectedProject.id)return;
@@ -128,6 +144,7 @@ async function event(payload){
  if(operation!=='DELETE'&&!fresh){try{fresh=await source.summary(payload.id);}catch{}}
  state.rows=applyTaskChange(state.rows,payload,fresh?normalize(fresh):null);
  if(state.page.rows)state.page.rows=applyTaskChange(state.page.rows,payload,fresh?normalize(fresh):null);
+ observeCompletion(state.rows);if(state.page.rows)observeCompletion(state.page.rows);
  try{state.stats=await source.stats(state.selectedProject.id);}catch{}
  if(state.route==='tasks'){
   if(operation==='INSERT'){resetPage();await loadTaskPage(1);return;}
@@ -212,7 +229,7 @@ async function reconcileTasks(){
    if(projectId!==state.selectedProject?.id||route!==state.route||page!==(state.page.number||1)||status!==state.status||search!==state.search)return;
    const next=queuePageResult((rows||[]).map(normalize),12);
    if(JSON.stringify(next.rows)!==JSON.stringify(state.page.rows)||next.hasNext!==state.page.hasNext){
-    state.page.rows=next.rows;state.page.hasNext=next.hasNext;
+    observeCompletion(next.rows);state.page.rows=next.rows;state.page.hasNext=next.hasNext;
     if(next.nextCursor)state.page.cursors[page]=next.nextCursor;
     state.page.loading=false;render();
    }
@@ -221,7 +238,7 @@ async function reconcileTasks(){
    if(projectId!==state.selectedProject?.id||route!==state.route)return;
    const next=(rows||[]).map(normalize);
    if(JSON.stringify(next)!==JSON.stringify(state.rows)||JSON.stringify(stats)!==JSON.stringify(state.stats)){
-    state.rows=next;state.stats=stats;const terminal=route==='live'?$('#live-terminal'):null;const follow=route==='live'&&terminal&&terminal.scrollHeight-terminal.scrollTop-terminal.clientHeight<64;render();if(follow){const updated=$('#live-terminal');if(updated)updated.scrollTop=updated.scrollHeight;}
+    state.rows=next;observeCompletion(state.rows);state.stats=stats;const terminal=route==='live'?$('#live-terminal'):null;const follow=route==='live'&&terminal&&terminal.scrollHeight-terminal.scrollTop-terminal.clientHeight<64;render();if(follow){const updated=$('#live-terminal');if(updated)updated.scrollTop=updated.scrollHeight;}
    }
   }
  }catch{if(state.connection==='live'){state.connection='reconnecting';render();}}
