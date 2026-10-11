@@ -19,7 +19,7 @@ const {acquire:acquireWorkspace}=require('./executors/workspace-lock');
 const {displayTask,taskSummary}=require('./task-display');
 const {createProgress,localLog,sanitizer,commandStream}=require('./task-progress');
 const {createSpeaker}=require('./task-tts');
-const DIR=__dirname, STATE=path.join(DIR,'supabase-state');
+const DIR=__dirname, STATE=process.env.CODEX_BRIDGE_LIBRARY_ONLY==='1'&&process.env.CODEX_BRIDGE_STATE_DIR?path.resolve(process.env.CODEX_BRIDGE_STATE_DIR):path.join(DIR,'supabase-state');
 const config=JSON.parse(fs.readFileSync(path.join(DIR,'remote-config.json')));
 const sb=config.supabase||{};
 const url=(process.env.CODEX_SUPABASE_URL||sb.url||'').replace(/\/$/,'');
@@ -94,8 +94,12 @@ function progressFor(task){
   const supportsPercent=Object.prototype.hasOwnProperty.call(task,'progress_percent');
   if(!supported)log('progress_local_only',{reason:'schema_pending'});
   const live=liveBroadcast(task);
+  const activityFile=path.join(STATE,'progress',String(task.id)+'.activity.json');
+  let prior={activity_seq:task.activity_seq||'0',last_activity_at:task.last_activity_at||null,activity_max_gap_ms:task.activity_max_gap_ms||0};try{prior=JSON.parse(fs.readFileSync(activityFile,'utf8'));}catch{}
+  const activity=require('./task-activity').createActivity({initial:prior,save:data=>workerControl.save(activityFile,data)});
+  const activitySupported=Object.hasOwn(task,'activity_seq');
   const progress=createProgress({
-    env:process.env,
+    activity,includeActivity:activitySupported,env:process.env,
     initialSeq:task.progress_seq,
     provider:['plan','command'].includes(task.execution_mode)?'termux':task.requested_provider||task.ai_provider||'codex',
     includePercent:supportsPercent,
@@ -133,7 +137,7 @@ function executionTimeoutMs(){
 function runCodexProcess(prompt,task={},progress,workspaceToken){
   return new Promise(resolve=>{
     const child=spawn(path.join(process.env.PREFIX||'/data/data/com.termux/files/usr','bin/codex-bridge'),[prompt],{
-      shell:false,stdio:['ignore','pipe','pipe'],env:{...process.env,...(workspaceToken?{CODEX_BRIDGE_WORKSPACE_TOKEN:workspaceToken}:{}),...(lifecycleSettings(process.env,config).validate?{CODEX_BRIDGE_TTS:'0'}:{}),CODEX_BRIDGE_JSON:'1',CODEX_BRIDGE_PROGRESS:progress?'1':'0',CODEX_BRIDGE_TASK_TRANSPORT:'supabase',CODEX_BRIDGE_TASK_NUMBER:displayTask(task).number||'',CODEX_BRIDGE_TASK_TITLE:displayTask(task).title,CODEX_BRIDGE_THREAD_FILE:path.join(DIR,'supabase-thread-id')}
+      shell:false,stdio:['ignore','pipe','pipe'],env:{...process.env,...(workspaceToken?{CODEX_BRIDGE_WORKSPACE_TOKEN:workspaceToken}:{}),...(lifecycleSettings(process.env,config).validate?{CODEX_BRIDGE_TTS:'0'}:{}),CODEX_BRIDGE_DIAGNOSTIC_FILE:path.join(STATE,'progress',String(task.id||'legacy')+'.diagnostic.json'),CODEX_BRIDGE_JSON:'1',CODEX_BRIDGE_PROGRESS:progress?'1':'0',CODEX_BRIDGE_TASK_TRANSPORT:'supabase',CODEX_BRIDGE_TASK_NUMBER:displayTask(task).number||'',CODEX_BRIDGE_TASK_TITLE:displayTask(task).title,CODEX_BRIDGE_THREAD_FILE:path.join(DIR,'supabase-thread-id')}
     });
     let stdout='',stderr='',settled=false,outputDone=Promise.resolve();
     const capture=progress?commandStream(progress,s=>{stderr=(stderr+s).slice(-262144);}):null;
@@ -191,7 +195,7 @@ function execute(prompt,task={},progress){
     let lease;
     try{lease=acquireWorkspace(DIR);}catch{return Promise.resolve({code:1,executionMode:'command',stdout:JSON.stringify({status:'failed',answer:'',error:'Workspace ocupado ou incerto.'}),stderr:''});}
     const controller=new AbortController();
-    const run=executeCommand(task.command_payload,{cwd:DIR,env:process.env,signal:controller.signal,progress}).then(result=>{
+    const run=executeCommand(task.command_payload,{taskId:task.id,cwd:DIR,env:process.env,signal:controller.signal,progress}).then(result=>{
       if(JSON.parse(result.stdout).workspaceReleased)lease.release();else lease.retain();return result;
     },()=>{lease.retain();return {code:1,executionMode:'command',stdout:JSON.stringify({status:'failed',answer:'',error:'Execução local incerta.'}),stderr:''};});
     run.cancel=()=>controller.abort();return run;
@@ -308,9 +312,19 @@ async function finish(task,run,progress){
     method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(payload)
   });
   // Receipt is removed only after a read confirms publication (recoverResults).
-  if(['antigravity','local','groq'].includes(run.provider)||(run.providerSelection?.provider==='codex'&&(lifecycleSettings(process.env,config).validate)))void speak(displayTask(task),{status:ok?'completed':'failed',answer:result,error});
+  if(process.env.CODEX_BRIDGE_REPLAY_PUBLICATION!=='1'&&(['antigravity','local','groq'].includes(run.provider)||(run.providerSelection?.provider==='codex'&&(lifecycleSettings(process.env,config).validate))))void speak(displayTask(task),{status:ok?'completed':'failed',answer:result,error});
   log('execution_finish',{id:task.id,taskNumber:displayTask(task).number,status:finalStatus});
   return {...taskSummary({...task,status:finalStatus}),result,error,...run.gitMetadata};
+}
+async function verifyPublished(task,run){
+  let parsed;try{parsed=JSON.parse(run.stdout.trim());}catch{}
+  const status=run.code===0&&parsed?.status==='completed'?'succeeded':['command','plan'].includes(run.executionMode)&&parsed?.status==='cancelled'?'cancelled':'failed';
+  const clean=sanitizer(process.env);
+  const result=String(typeof parsed?.answer==='string'?parsed.answer:run.stdout||'(sem resposta textual)').split(/\r?\n/).map(clean).join('\n');
+  const rawError=parsed?.error||run.error||run.stderr||null;
+  const error=rawError&&String(rawError).split(/\r?\n/).map(clean).join('\n');
+  const rows=await request('bridge_tasks?id=eq.'+encodeURIComponent(task.id)+'&select=status,result,error&limit=1',{signal:AbortSignal.timeout(10000)});
+  return rows?.[0]?.status===status&&rows[0].result===result&&rows[0].error===error;
 }
 async function recoverResults(){
   for(const item of pendingReceipts(STATE)){
@@ -358,4 +372,7 @@ async function main(){
   }
   log('stopped');
 }
+if(process.env.CODEX_BRIDGE_LIBRARY_ONLY!=='1'){
 main().catch(e=>{log('fatal',{error:e.message});process.exitCode=1;});
+}
+module.exports={execute,finish,progressFor,recoverResults,verifyPublished};
