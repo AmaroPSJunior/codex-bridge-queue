@@ -7,7 +7,8 @@ const {createSpeaker} = require('./task-tts');
 const {acquire:acquireWorkspace}=require('./executors/workspace-lock');
 let workspaceLease,workspaceMayRun=false;
 const speak = createSpeaker({spawn,setTimeout,clearTimeout,env:process.env});
-const DIR = path.join(process.env.HOME, 'codex-bridge');
+// Keep the workspace anchored to this checkout, not a historical Termux install.
+const DIR = fs.realpathSync(__dirname);
 const THREAD_FILE = process.env.CODEX_BRIDGE_THREAD_FILE || path.join(DIR, 'thread-id');
 const JSON_MODE = process.env.CODEX_BRIDGE_JSON === '1';
 const TTS_ENABLED = process.env.CODEX_BRIDGE_TTS !== '0' && (JSON_MODE || process.env.CODEX_BRIDGE_TTS === '1');
