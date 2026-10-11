@@ -349,7 +349,7 @@ async function recoverResults(){
     }catch{log('result_receipt_pending');}
   }
 }
-let stopping=false,wake,activeExecution;
+let stopping=false,wake,activeExecution,autoPauseLogged=false;
 for(const sig of ['SIGTERM','SIGINT'])process.on(sig,()=>{stopping=true;if(activeExecution?.cancel)activeExecution.cancel();if(activeProgress)void activeProgress.checkpoint('shutdown');if(wake)wake();});
 async function main(){
   if(!url||!key)throw Error('Defina CODEX_SUPABASE_SERVICE_ROLE_KEY; URL pode vir de remote-config.json ou CODEX_SUPABASE_URL.');
@@ -363,7 +363,7 @@ async function main(){
       const project=await nextProjectProvision();
       if(project){await provisionProject(project);continue;}
       const task=autoGate.canClaim()?await next():null;
-      if(!autoGate.canClaim())log('autocontinue_paused',autoGate.status());
+      if(!autoGate.canClaim()&&!autoPauseLogged){log('autocontinue_paused',autoGate.status());autoPauseLogged=true;}
       if(process.env.BRIDGE_SUPERVISOR_GENERATION)workerControl.save(path.join(STATE,'control','boot.json'),{pid:process.pid,generation:process.env.BRIDGE_SUPERVISOR_GENERATION});
       if(task){
         const claimed=await claim(task);
