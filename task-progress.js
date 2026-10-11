@@ -40,7 +40,7 @@ function sanitizer(env={}) {
    .replace(/[\x00-\x08\x0b-\x1f\x7f]/g,'');
  };
 }
-function createProgress({write=async()=>{},append=()=>{},env={},initialSeq=0,provider='termux',includePercent=false,onLive=()=>{},now=()=>performance.now(),timer=setTimeout,cancel=clearTimeout,onError=()=>{}}={}) {
+function createProgress({write=async()=>{},append=()=>{},env={},initialSeq=0,provider='termux',includePercent=false,onLive=()=>{},activity=null,includeActivity=false,now=()=>performance.now(),timer=setTimeout,cancel=clearTimeout,onError=()=>{}}={}) {
  const clean=sanitizer(env),lines=[],streams=new Map();
  let pending=0,lastSuccess=now(),retryAt=0,handle,inflight,closed=false,stage='running',seq,attempt,suppressBatch=false,currentProvider=provider,maxPercent=STAGES.running.percent,currentMessage='';
  try {seq=BigInt(initialSeq||0);if(seq<0n)seq=0n;}catch{seq=0n;}
@@ -61,6 +61,7 @@ function createProgress({write=async()=>{},append=()=>{},env={},initialSeq=0,pro
   // Single over-limit lines are omitted whole, never cut through a secret.
   if(Buffer.byteLength(JSON.stringify(safe),'utf8')>MAX_BYTES)safe='[linha excede limite; omitida]';
   try{append(safe+'\n');}catch{onError('local_log_failed');}
+  try{activity?.record('output',safe);}catch{onError('activity_checkpoint_failed');}
   lines.push(safe);
   while(lines.length>MAX_LINES||Buffer.byteLength(JSON.stringify(text()),'utf8')>MAX_BYTES)lines.shift();
   pending++;
@@ -98,6 +99,7 @@ function createProgress({write=async()=>{},append=()=>{},env={},initialSeq=0,pro
    const count=pending;
    maxPercent=Math.max(maxPercent,STAGES[stage].percent);
    attempt={count,payload:{
+     ...(includeActivity?activity?.snapshot():{}),
      progress_message:currentMessage||stageMessage(stage,currentProvider,maxPercent),
      ...(includePercent?{progress_percent:maxPercent}:{}),
      recent_output:text(),
@@ -125,6 +127,7 @@ function createProgress({write=async()=>{},append=()=>{},env={},initialSeq=0,pro
   if(retry&&!attempt&&pending)await flush(reason);
  }
  async function commandComplete(code,channel){
+  try{activity?.record('command_end',String(channel||'process')+':'+code);}catch{onError('activity_checkpoint_failed');}
   stage=code===0?'commandDone':Number.isInteger(code)?'commandError':'commandUnknown';
   suppressBatch=true;drain(channel);suppressBatch=false;
   try{append('[command exit: '+(Number.isInteger(code)?code:'unknown')+']\n');}catch{onError('local_log_failed');}

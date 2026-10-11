@@ -54,7 +54,11 @@
     "runtime/queue.py",
     "runtime/service.py",
     "runtime/execute.cjs",
-    "runtime/20-bridge-runtime"
+    "runtime/20-bridge-runtime",
+    "task-activity.js",
+    "runtime/recovery.py",
+    "database/task-activity.sql",
+    "docs/ACTIVITY-RECOVERY.md"
   ],
   "contracts": {
     "remote-worker.js": [

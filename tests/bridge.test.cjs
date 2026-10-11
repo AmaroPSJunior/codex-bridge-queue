@@ -129,3 +129,38 @@ test('Bridge workspace fence releases on acknowledged terminal failure, not time
   assert.equal(JSON.parse(b.h.logs[0]).workspaceReleased,terminal);
  }
 });
+
+test('Inactivity renews on useful events, not heartbeats, replay or unrelated turns',async t=>{
+ const b=await setup(t);const original=b.h.timers.find(x=>x.ms===900000);
+ const frame={threadId:'thread-test',turnId:'turn-test',itemId:'c1',delta:'new output'};
+ b.send('item/commandExecution/outputDelta',frame);
+ assert.equal(original.cleared,true);
+ const active=()=>b.h.timers.filter(x=>x.ms===900000&&!x.cleared);
+ assert.equal(active().length,1);const renewed=active()[0];
+ b.send('item/commandExecution/outputDelta',frame);
+ b.send('heartbeat',frame);
+ b.send('item/commandExecution/outputDelta',{...frame,turnId:'other',delta:'different'});
+ assert.equal(active()[0],renewed);
+ renewed.fn();assert.match(JSON.parse(b.h.logs[0]).error,/inatividade/);
+});
+test('Healthy activity can cross repeated 15-minute windows; hard limit stays fixed',async t=>{
+ const b=await setup(t);const hard=b.h.timers.find(x=>x.ms===14400000);
+ for(let i=0;i<8;i++){
+  const prior=b.h.timers.filter(x=>x.ms===900000).at(-1);
+  b.send('item/completed',{threadId:'thread-test',turnId:'turn-test',item:{id:'step'+i,type:'commandExecution',exitCode:0}});
+  assert.equal(prior.cleared,true);assert.equal(b.h.logs.length,0);
+ }
+ hard.fn();assert.match(JSON.parse(b.h.logs[0]).error,/defensivo/);
+ assert.ok(b.h.timers.filter(x=>x.ms===900000).every(x=>x.cleared));
+});
+
+test('Virtual clock: 56 minutes of useful work survives, 15 minutes of silence fails once',async t=>{
+ const b=await setup(t);
+ for(let i=0;i<4;i++){
+  b.h.advance(14*60000);assert.equal(b.h.logs.length,0);
+  b.send('item/commandExecution/outputDelta',{threadId:'thread-test',turnId:'turn-test',itemId:'cmd',delta:'step '+i});
+ }
+ b.h.advance(899999);assert.equal(b.h.logs.length,0);
+ b.h.advance(1);assert.equal(b.h.logs.length,1);assert.match(JSON.parse(b.h.logs[0]).error,/inatividade/);
+ b.h.advance(14400000);assert.equal(b.h.logs.length,1);
+});

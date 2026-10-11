@@ -66,8 +66,12 @@ function progressFor(task){
   const supportsPercent=Object.prototype.hasOwnProperty.call(task,'progress_percent');
   if(!supported)log('progress_local_only',{reason:'schema_pending'});
   const live=liveBroadcast(task);
+  const activityFile=path.join(STATE,'progress',String(task.id)+'.activity.json');
+  let prior={activity_seq:task.activity_seq||'0',last_activity_at:task.last_activity_at||null,activity_max_gap_ms:task.activity_max_gap_ms||0};try{prior=JSON.parse(fs.readFileSync(activityFile,'utf8'));}catch{}
+  const activity=require('./task-activity').createActivity({initial:prior,save:data=>workerControl.save(activityFile,data)});
+  const activitySupported=Object.hasOwn(task,'activity_seq');
   const progress=createProgress({
-    env:process.env,
+    activity,includeActivity:activitySupported,env:process.env,
     initialSeq:task.progress_seq,
     provider:['plan','command'].includes(task.execution_mode)?'termux':task.requested_provider||task.ai_provider||'codex',
     includePercent:supportsPercent,
@@ -105,7 +109,7 @@ function executionTimeoutMs(){
 function runCodexProcess(prompt,task={},progress,workspaceToken){
   return new Promise(resolve=>{
     const child=spawn(path.join(process.env.PREFIX||'/data/data/com.termux/files/usr','bin/codex-bridge'),[prompt],{
-      shell:false,stdio:['ignore','pipe','pipe'],env:{...process.env,...(workspaceToken?{CODEX_BRIDGE_WORKSPACE_TOKEN:workspaceToken}:{}),...(lifecycleSettings(process.env,config).validate?{CODEX_BRIDGE_TTS:'0'}:{}),CODEX_BRIDGE_JSON:'1',CODEX_BRIDGE_PROGRESS:progress?'1':'0',CODEX_BRIDGE_TASK_TRANSPORT:'supabase',CODEX_BRIDGE_TASK_NUMBER:displayTask(task).number||'',CODEX_BRIDGE_TASK_TITLE:displayTask(task).title,CODEX_BRIDGE_THREAD_FILE:path.join(DIR,'supabase-thread-id')}
+      shell:false,stdio:['ignore','pipe','pipe'],env:{...process.env,...(workspaceToken?{CODEX_BRIDGE_WORKSPACE_TOKEN:workspaceToken}:{}),...(lifecycleSettings(process.env,config).validate?{CODEX_BRIDGE_TTS:'0'}:{}),CODEX_BRIDGE_DIAGNOSTIC_FILE:path.join(STATE,'progress',String(task.id||'legacy')+'.diagnostic.json'),CODEX_BRIDGE_JSON:'1',CODEX_BRIDGE_PROGRESS:progress?'1':'0',CODEX_BRIDGE_TASK_TRANSPORT:'supabase',CODEX_BRIDGE_TASK_NUMBER:displayTask(task).number||'',CODEX_BRIDGE_TASK_TITLE:displayTask(task).title,CODEX_BRIDGE_THREAD_FILE:path.join(DIR,'supabase-thread-id')}
     });
     let stdout='',stderr='',settled=false,outputDone=Promise.resolve();
     const capture=progress?commandStream(progress,s=>{stderr=(stderr+s).slice(-262144);}):null;

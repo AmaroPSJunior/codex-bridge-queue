@@ -12,6 +12,7 @@ import time
 import uuid
 from runtime.ledger import Ledger, alive, identity
 from runtime.queue import Queue
+from runtime.recovery import publication_budget, request_inactivity_drain
 
 ROOT=Path(__file__).resolve().parent.parent
 LANES=('agent','command','maintenance')
@@ -135,7 +136,15 @@ def maintenance(root):
             h=ledger.root/a['id']/'executor-health.json'
             try:age=now-read(h)['at']/1000
             except Exception:age=None
-            health['executors'].append({'id':a['id'],'state':a['state'],'heartbeat_age':age,'needs_review':age is None or age>60})
+            activity_file=ledger.root/a['id']/'state'/'progress'/(a['id']+'.activity.json')
+            try:activity=read(activity_file);last=__import__('datetime').datetime.fromisoformat(activity['last_activity_at'].replace('Z','+00:00')).timestamp();idle=now-last
+            except Exception:idle=None
+            # Request drain/restart, never signal an active executor. The supervisor ACKs
+            # only after the lane drains; irreversible or unobservable work stays fenced.
+            silence=idle if idle is not None else now-a['updated']
+            request_inactivity_drain(ledger,a,silence)
+            # Automatic liveness is not useful progress and cannot suppress inactivity.
+            health['executors'].append({'id':a['id'],'state':a['state'],'heartbeat_age':age,'activity_idle_seconds':idle,'needs_review':age is None or age>60 or idle is None or idle>=900})
         write(ledger.root/'health.json',health)
         for a in ledger.active():
             if a['owner'] and alive(json.loads(a['owner'])):continue
@@ -144,7 +153,7 @@ def maintenance(root):
             if worker and alive(json.loads(worker[0])) and worker[1] in ('busy','starting','publishing'):continue
             if settle(ledger,a):continue
             folder=ledger.root/a['id']
-            if (folder/'result.json').exists():
+            if (folder/'result.json').exists() and publication_budget(ledger,a['id']):
                 # Only retry publication from durable result; NEVER execution.
                 child=spawn_executor(folder,'publish')
                 ledger.transition(a['id'],a['fence'],'publishing',identity(child.pid))

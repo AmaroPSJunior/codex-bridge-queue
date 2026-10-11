@@ -7,14 +7,14 @@ function harness(t,file,options={}) {
  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
  const config={repository:'owner/queue',allowedAuthors:['owner'],maxPromptBytes:24,pollSeconds:1,supabase:{url:'https://example.invalid',pollSeconds:1},...options.config};
  fs.writeFileSync(path.join(dir,'remote-config.json'),JSON.stringify(config));
- const calls=[],logs=[],timers=[];
+ const calls=[],logs=[],timers=[];let virtualNow=0;
  const proc=new EventEmitter();Object.assign(proc,{env:{HOME:dir,PREFIX:dir,CODEX_SUPABASE_SERVICE_ROLE_KEY:'synthetic-only',...options.env},pid:12345,argv:options.argv||['node',file],umask:()=>{},exit:code=>{throw Error('exit '+code);}});
  function spawn(command,args,opts){
   const child=new EventEmitter();child.pid=456;child.stdin=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.stdin.end=input=>{child.input=input;};
   child.kill=sig=>{child.killed=sig;child.emit('close',null);};child.unref=()=>{};
   calls.push({command,args,opts,child});return child;
  }
- const context={Buffer,URL,AbortSignal,AbortController,console:{log:s=>logs.push(s),error:s=>logs.push(s)},__dirname:dir,__filename:path.join(dir,file),process:proc,module:{exports:{}},exports:{},fetch:options.fetch||(()=>{throw Error('Unexpected network call');}),setTimeout:(fn,ms)=>{const x={fn,ms,unref(){return this;}};timers.push(x);return x;},clearTimeout:x=>{if(x)x.cleared=true;},setInterval:(fn,ms)=>{timers.push({fn,ms});},require:name=>{
+ const context={Buffer,URL,AbortSignal,AbortController,console:{log:s=>logs.push(s),error:s=>logs.push(s)},__dirname:dir,__filename:path.join(dir,file),process:proc,module:{exports:{}},exports:{},fetch:options.fetch||(()=>{throw Error('Unexpected network call');}),setTimeout:(fn,ms)=>{const x={fn,ms,due:virtualNow+ms,unref(){return this;}};timers.push(x);return x;},clearTimeout:x=>{if(x)x.cleared=true;},setInterval:(fn,ms)=>{timers.push({fn,ms});},require:name=>{
   if(name==='./executors/command')return options.modules?.[name]||require('../executors/command');
   if(name==='./executors/plan')return options.modules?.[name]||require('../executors/plan');
   if(name==='./executors/workspace-lock')return options.modules?.[name]||{acquire:()=>({token:undefined,release(){},retain(){}})};
@@ -28,6 +28,7 @@ function harness(t,file,options={}) {
   if(name==='./executors/local')return options.modules?.[name]||require('../executors/local');
   if(name==='./executors/antigravity')return options.modules?.[name]||require('../executors/antigravity');
   if(name==='./executors/codex')return require('../executors/codex');
+  if(name==='./task-activity')return require('../task-activity');
   if(name==='./task-progress')return require('../task-progress');
   if(name==='./task-tts')return require('../task-tts');
   if(name==='./task-display')return require('../task-display');
@@ -44,7 +45,8 @@ function harness(t,file,options={}) {
   source=source.replace(entry,'');
  }
  vm.runInContext(source,context,{filename:file});
- return {dir,calls,logs,timers,proc,context,run:s=>vm.runInContext(s,context),set:(k,v)=>context[k]=v};
+ function advance(ms){const end=virtualNow+ms;let count=0;while(true){const next=timers.filter(x=>!x.cleared&&!x.fired&&Number.isFinite(x.due)&&x.due<=end).sort((a,b)=>a.due-b.due)[0];if(!next)break;if(++count>10000)throw Error('fake timer loop');virtualNow=next.due;next.fired=true;next.fn();}virtualNow=end;}
+ return {dir,calls,logs,timers,proc,context,advance,run:s=>vm.runInContext(s,context),set:(k,v)=>context[k]=v};
 }
 const flush=()=>new Promise(r=>setImmediate(r));
 module.exports={harness,flush};

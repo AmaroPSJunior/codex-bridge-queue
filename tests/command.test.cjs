@@ -84,3 +84,12 @@ test('deterministic-only keeps local supervisor control available without provid
  const r=await h.run("execute('{\"bridge_control\":\"status\"}',{id:'00000000-0000-4000-8000-000000000099',execution_mode:'agent'})");
  assert.equal(r.code,0);assert.equal(h.calls.length,0);
 });
+
+for(const reason of ['timeout','cancelled'])test('irreversible command '+reason+' does not signal child or release fence',async t=>{
+ const m=mock(t),controller=new AbortController();let signals=0;m.child.kill=()=>signals++;
+ const promise=executeCommand({command:'pwd',timeout_ms:123},{...m.options,nonInterruptible:true,signal:controller.signal});
+ if(reason==='timeout')m.timers.find(x=>x.ms===123).fn();else controller.abort();
+ const result=await promise;assert.equal(signals,0);assert.equal(result.code,1);
+ assert.equal(JSON.parse(result.stdout).workspaceReleased,false);
+ m.child.emit('close',0);assert.equal(JSON.parse(result.stdout).workspaceReleased,false);
+});
