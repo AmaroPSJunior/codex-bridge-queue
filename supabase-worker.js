@@ -163,7 +163,7 @@ function execute(prompt,task={},progress){
     let lease;
     try{lease=acquireWorkspace(DIR);}catch{return Promise.resolve({code:1,executionMode:'command',stdout:JSON.stringify({status:'failed',answer:'',error:'Workspace ocupado ou incerto.'}),stderr:''});}
     const controller=new AbortController();
-    const run=executeCommand(task.command_payload,{cwd:DIR,env:process.env,signal:controller.signal,progress}).then(result=>{
+    const run=executeCommand(task.command_payload,{taskId:task.id,cwd:DIR,env:process.env,signal:controller.signal,progress}).then(result=>{
       if(JSON.parse(result.stdout).workspaceReleased)lease.release();else lease.retain();return result;
     },()=>{lease.retain();return {code:1,executionMode:'command',stdout:JSON.stringify({status:'failed',answer:'',error:'Execução local incerta.'}),stderr:''};});
     run.cancel=()=>controller.abort();return run;

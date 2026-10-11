@@ -43,7 +43,12 @@
     "executors/safe-command.js",
     "executors/result-receipt.js",
     "database/add-plan-execution-mode.sql",
-    "tests/autopilot-plan.test.cjs"
+    "tests/autopilot-plan.test.cjs",
+    "docs/DEVICE-ACTIONS.md",
+    "integrations/device-consent/store.cjs",
+    "integrations/device-consent/server.cjs",
+    "integrations/device-consent/index.html",
+    "integrations/device-consent/app.js"
   ],
   "contracts": {
     "remote-worker.js": [

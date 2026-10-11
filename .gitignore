@@ -61,3 +61,9 @@ dashboard/dist/
 !task-git.js
 **/*.bak
 **/*.bak.*
+
+# Audited local consent issuer source only; configuration stays outside the repo.
+!integrations/device-consent/
+!integrations/device-consent/*.cjs
+!integrations/device-consent/*.html
+!integrations/device-consent/app.js

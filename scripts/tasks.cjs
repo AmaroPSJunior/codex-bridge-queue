@@ -35,7 +35,7 @@ function payload(input,transport){
 
  const prompt=input.instruction??input.prompt??
   (command
-   ? 'Executar comando permitido: '+command.command
+   ? 'Executar comando permitido: '+(command.action||command.command)
    : plan
      ? 'Executar plano determinístico com '+plan.steps.length+' etapa(s).'
      : undefined);

@@ -4,7 +4,7 @@ async function fixture(store={session:null}){
  const {createData}=await import('../dashboard/data.mjs');let listener,options,logoutScope,lost=0,channelCount=0,authToken;
  const client={auth:{
   onAuthStateChange:fn=>{listener=fn;return {data:{subscription:{unsubscribe(){}}}};},
-  signInWithPassword:async()=>{store.session={access_token:'fixture-access'};return {};},
+  signInWithPassword:async()=>{store.session={access_token:'fixture-access',refresh_token:'fixture-refresh'};return {};},
   getSession:async()=>({data:{session:store.session}}),getUser:async()=>({data:{user:store.session?{id:'fixture'}:null}}),
   signOut:async opts=>{logoutScope=opts.scope;store.session=null;listener('SIGNED_OUT');return {};}
  },rpc:async name=>({data:name==='bridge_dashboard_detail'?{output_available:false,recent_output:null}:[]}),
@@ -21,7 +21,7 @@ test('login, dispose, reload restoration, navigation/logs and explicit local log
  await reload.api.logout();assert.equal(reload.scope,'local');assert.equal(store.session,null);const after=await fixture(store);assert.equal(await after.api.restore(),false);await after.api.close();
 });
 test('temporary verification failure preserves session and disposal never signs out',async()=>{
- const f=await fixture({session:{access_token:'fixture'}});f.client.auth.getUser=async()=>({error:{status:503}});await assert.rejects(f.api.restore(),/preservada/);await f.api.close();assert.ok(f.store.session);
+ const f=await fixture({session:{access_token:'fixture',refresh_token:'fixture-refresh',expires_at:1}});f.client.auth.refreshSession=async()=>({error:{status:503}});await assert.rejects(f.api.restore(),/preservada/);await f.api.close();assert.ok(f.store.session);
 });
 test('refresh authenticates realtime and another-tab logout clears consumer',async()=>{
  const f=await fixture({session:{access_token:'fixture'}});f.event('TOKEN_REFRESHED',{access_token:'rotated'});await new Promise(r=>setTimeout(r,5));assert.equal(f.token,'rotated');f.event('SIGNED_OUT');await new Promise(r=>setTimeout(r,5));assert.equal(f.lost,1);await f.api.close();

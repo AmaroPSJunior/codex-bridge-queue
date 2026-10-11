@@ -17,10 +17,10 @@ def source_paths(root=ROOT):
     for pattern in ('executors/*.js', 'executors/*.md', '*.js', 'autostart/*.py', 'scripts/*.py', 'scripts/*.cjs',
                     'tests/*.py', 'tests/*.cjs', 'database/*.sql', '.github/workflows/*.yml', '.github/ISSUE_TEMPLATE/*.md', 'autostart/*.md', 'integrations/gemini/*.cjs', 'integrations/gemini/*.py'):
         names.update(str(p.relative_to(root)) for p in root.glob(pattern) if p.is_file())
-    # Local ignored experiments/backups must not change published documentation.
+    # Only tracked/staged sources define published docs; local diagnostic scripts are not release inputs.
     if (root/'.git').exists():
         public = set(subprocess.check_output(
-            ['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'],
+            ['git', 'ls-files', '--cached', '-z'],
             cwd=root).decode().split('\0'))
         names.intersection_update(public)
     return sorted(names)
