@@ -21,6 +21,7 @@ with tempfile.TemporaryDirectory(prefix='bridge-offline-home-') as home:
         [sys.executable, '-B', 'tests/test_docs.py'],
         [sys.executable, '-B', 'tests/test_smoke.py'],
         [sys.executable, '-B', 'tests/test_boot.py'],
+        [sys.executable, '-B', 'tests/test_boot_path_repair.py'],
     ]
     for command in commands:
         result = subprocess.run(command, cwd=root, env=env)
