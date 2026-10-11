@@ -1,0 +1,22 @@
+name: Device claim SQL tests
+on:
+  pull_request:
+    paths:
+      - 'database/multi-device-*.sql'
+      - 'tests/device-claim-sql.cjs'
+      - '.github/workflows/device-claim-sql.yml'
+  workflow_dispatch:
+jobs:
+  device-claims:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install disposable PostgreSQL test engine
+        run: npm install --no-save --ignore-scripts --no-audit --no-fund @electric-sql/pglite
+      - name: Test real SQL functions in isolated PostgreSQL
+        run: node tests/device-claim-sql.cjs
