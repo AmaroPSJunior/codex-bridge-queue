@@ -23,3 +23,16 @@ test('the checkout path is stable even when the shell HOME differs',()=>{
   const actual=fs.realpathSync(path.join(root,'tests','..'));
   assert.equal(actual,expected);
 });
+
+test('successful Codex turns do not treat diagnostic stderr as failure',()=>{
+  const source=fs.readFileSync(path.join(root,'supabase-worker.js'),'utf8');
+  assert.match(source,/const rawError=ok\?null:/);
+  assert.match(source,/const rawError=status==='succeeded'\?null:/);
+});
+
+test('terminal success advances percentage and remains replayable',()=>{
+  const worker=fs.readFileSync(path.join(root,'supabase-worker.js'),'utf8');
+  const receipt=fs.readFileSync(path.join(root,'executors/result-receipt.js'),'utf8');
+  assert.match(worker,/ok&&Object\.hasOwn\(task,'progress_percent'\)\?\{progress_percent:100\}/);
+  assert.match(receipt,/'progress_percent'/);
+});
