@@ -37,7 +37,8 @@ async function request(route,options={}){
 }
 async function next(){
   // Legacy worker must never attempt to reserve a task assigned to another device.
-  const rows=await request('bridge_tasks?status=eq.queued&executor_device_id=is.null&select=*&order=created_at.asc&limit=1');
+  const deviceFilter=process.env.CODEX_BRIDGE_DEVICE_ROUTING_V1==='1'?'&executor_device_id=is.null':'';
+  const rows=await request('bridge_tasks?status=eq.queued'+deviceFilter+'&select=*&order=created_at.asc&limit=1');
   return rows?.[0]||null;
 }
 async function nextProjectProvision(){
