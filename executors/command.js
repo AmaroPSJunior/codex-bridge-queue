@@ -46,7 +46,7 @@ function directory(root,relative){
  }
  const real=fs.realpathSync(current);if(real!==root&&!real.startsWith(root+path.sep))throw Error('Diretório recusado.');return real;
 }
-function executeValidated(payload,{cwd,env=process.env,signal,progress,spawnFn=spawn,timer=setTimeout,clear=clearTimeout}={},prepared){
+function executeValidated(payload,{cwd,env=process.env,signal,progress,nonInterruptible=false,spawnFn=spawn,timer=setTimeout,clear=clearTimeout}={},prepared){
  let spec,dir;
  try{spec=prepared||validate(payload);dir=directory(cwd,spec.cwd);}catch{return Promise.resolve(envelope({exit_code:null,stdout:'',stderr:'',started_at:null,completed_at:new Date().toISOString(),error_code:'invalid_input'},true));}
  const started=new Date().toISOString(),clean=sanitizer(env),output={stdout:'',stderr:''},pending={stdout:'',stderr:''},decoders={stdout:new StringDecoder('utf8'),stderr:new StringDecoder('utf8')};
@@ -65,6 +65,8 @@ function executeValidated(payload,{cwd,env=process.env,signal,progress,spawnFn=s
   function stop(code){
    if(settled||reason)return;reason=code;
    if(!child){void finish(null,true);return;}
+   // Irreversible remote actions may outlive their client. Never signal it on expiry.
+   if(nonInterruptible){void finish(null,false);return;}
    grace=timer(()=>void finish(null,false),5000);
    try{child.kill('SIGTERM');}catch{void finish(null,false);}
   }

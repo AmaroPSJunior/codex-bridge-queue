@@ -63,7 +63,7 @@ async function execute(payload,options,run){
    if(requiresConsent(p)){const grant=require('../integrations/device-consent/store.cjs').grant(env.HOME,taskId);p={...p,authorization:grant.authorization};consent(p,taskId,grant.key);}
    if(p.action==='apk103.install'&&args.includes('install'))verify(file);
    released=false;
-   result=await run({command,args,cwd:'.',timeout_ms:60000},options);
+   result=await run({command,args,cwd:'.',timeout_ms:60000},{...options,nonInterruptible:command==='adb'&&(args.includes('install')||args.includes('uninstall'))});
    released=JSON.parse(result.stdout).workspaceReleased===true;
    results.push(result.commandResult);
    if(result.code!==0)break;
