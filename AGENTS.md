@@ -26,3 +26,7 @@ Decisão do responsável pelo projeto (2026-10-11): **GitHub é o ambiente padr�
 - Dados da fila, status e resultados: **Supabase**, quando apropriado.
 
 Registre exceções e justificativas na tarefa ou PR. Consulte este arquivo antes de criar tarefas remotas que poderiam ter sido resolvidas no GitHub.
+
+## Organização de agentes e automação
+
+**Decisão vigente:** não criar múltiplos agentes autônomos por padrão. ChatGPT é o agente coordenador principal e executa, conforme a tarefa, os papéis de planejador, desenvolvedor, QA e revisor. GitHub Actions é automação de CI, não um agente de IA. Priorizar solicitações sob demanda e diminuir intervenções manuais. Qualquer proposta de novos agentes requer necessidade concreta, custo/risco estimados e novo ADR. Leia [ADR-0001](docs/adr/0001-chatgpt-agente-principal-github-primeiro.md).
