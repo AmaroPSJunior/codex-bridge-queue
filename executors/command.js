@@ -22,7 +22,7 @@ function validate(payload){
  if(!payload||Array.isArray(payload)||typeof payload!=='object'||Object.keys(payload).some(k=>!['command','args','cwd','timeout_ms'].includes(k)))throw Error('Payload inválido.');
  const {command,args=[],cwd='.',timeout_ms=10000}=payload;
  const permitted={pwd:[[]],ls:[[],['-la']]};
- const adbTarget='10.208.220.181:5555';
+ const adbTarget='10.23.201.181:5555';
  const safeAdbArgs=[
   ['version'],['devices','-l'],['connect',adbTarget],
   ['-s',adbTarget,'shell','getprop','ro.build.version.release'],
