@@ -289,7 +289,7 @@ async function finish(task,run,progress){
   const rawError=ok?null:(parsed?.error||run.error||run.stderr||null);
   const error=rawError&&String(rawError).split(/\r?\n/).map(sanitizer(process.env)).join('\n');
   if(progress)await progress.close(finalStatus);
-  const payload={status:finalStatus,result,error,...(ok&&Object.hasOwn(task,'progress_percent')?{progress_percent:100}:{}),completed_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+  const payload={status:finalStatus,result,error,...(ok&&Object.hasOwn(task,'progress_percent')?{progress_percent:100}:{}),...(ok&&Object.hasOwn(task,'progress_message')?{progress_message:'Codex | 100% | Concluída'}:{}),completed_at:new Date().toISOString(),updated_at:new Date().toISOString()};
   if(Object.hasOwn(task,'execution_mode'))payload.execution_mode=run.executionMode||'agent';
   if(run.executionMode==='command'){
     if(Object.hasOwn(task,'command_result')&&run.commandResult)payload.command_result=run.commandResult;
