@@ -25,3 +25,20 @@ Preservar o worker legado até um teste isolado de concorrência. Não instalar 
 ## Implementação em fases
 
 Inspecionar schema, políticas e reservas existentes; criar migration e testes de concorrência; integrar cliente do worker por dispositivo; preparar instalação assistida temporariamente por ADB; validar o primeiro teste fim a fim com o celular desconectado. GitHub Actions não fornece acesso direto à central.
+
+## Contrato de reserva autenticada (fase 2)
+
+O backend deve receber um token individual de dispositivo emitido por provisionamento autorizado e compará-lo com verificador criptográfico armazenado no banco; nunca usar somente um ID informado pelo worker como autorização. A operação de reserva e a verificação de destino precisam acontecer na mesma transação no servidor. A conclusão também deve comprovar a identidade e a geração do claim (fencing token). Não conceder permissão direta de atualização de tarefas para o papel usado pela central.
+
+Uma migração de segurança só poderá ser aplicada após os testes de concorrência, revogação de credenciais e regressão do worker legado. O arquivo `database/multi-device-phase1.sql` é preparação para revisão, não é a implantação desse protocolo. Sua trigger é uma barreira temporária para impedir claims de tarefas direcionadas até existir RPC autenticada.
+
+## Ordem operacional obrigatória
+
+1. Revisar e testar migrações em banco descartável.
+2. Instalar primeiro o schema em manutenção planejada, sem tarefas destinadas à central.
+3. Atualizar o worker legado e habilitar `CODEX_BRIDGE_DEVICE_ROUTING_V1=1` somente depois de existir a coluna `executor_device_id`.
+4. Implantar e testar a RPC autenticada com dispositivo de ensaio.
+5. Provisionar credenciais específicas e iniciar o worker da central com allowlist somente leitura.
+6. Executar teste fim a fim com o celular desconectado.
+
+O filtro da consulta do worker é apenas compatibilidade; **não substitui** a validação atômica no banco. Não ativar a central somente porque o CI passou.
