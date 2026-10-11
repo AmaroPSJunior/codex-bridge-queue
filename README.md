@@ -1,4 +1,4 @@
-<!-- Gerado por npm run docs:generate; não editar. Fonte: docs/model.json. SHA256: 8efbe8c52e7d59e9dfa72b9919417d4a04ea5f8cf29144e17c6d2d15a7331137 -->
+<!-- Gerado por npm run docs:generate; não editar. Fonte: docs/model.json. SHA256: f960d5b91bc93ca068da770116e0f4e272c0fc69f67a96522232e90268d69ee0 -->
 # Ponte remota ChatGPT → Termux → Codex
 
 A ponte entrega seus pedidos ao Codex no Termux e devolve as respostas por GitHub Issues ou Supabase. Pense nela como um serviço de entrega com uma caixa de entrada e um recibo.
@@ -26,6 +26,7 @@ flowchart LR
 - [Instalação, operação, segurança e solução de problemas](docs/TECNICO.md)
 - [Detalhes do autostart Supabase](autostart/SUPABASE.md)
 - [Gemini: enviar e consultar tarefas](integrations/gemini/README.md)
+- [Runtime multiexecutor: arquitetura, operação e rollback](docs/MULTIWORKER-RUNTIME.md)
 - [Arquitetura multi-IA](docs/MULTI-IA.md)
 - [Metadados Multi-IA e estado dos providers](docs/MULTI-IA-METADATA.md)
 - [Worker Multi-IA ponta a ponta](docs/MULTI-IA-WORKER.md)

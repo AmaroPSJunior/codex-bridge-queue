@@ -98,6 +98,7 @@ A ponte entrega seus pedidos ao Codex no Termux e devolve as respostas por GitHu
 - [Instalação, operação, segurança e solução de problemas](docs/TECNICO.md)
 - [Detalhes do autostart Supabase](autostart/SUPABASE.md)
 - [Gemini: enviar e consultar tarefas](integrations/gemini/README.md)
+- [Runtime multiexecutor: arquitetura, operação e rollback](docs/MULTIWORKER-RUNTIME.md)
 - [Arquitetura multi-IA](docs/MULTI-IA.md)
 - [Metadados Multi-IA e estado dos providers](docs/MULTI-IA-METADATA.md)
 - [Worker Multi-IA ponta a ponta](docs/MULTI-IA-WORKER.md)

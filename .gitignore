@@ -67,3 +67,9 @@ dashboard/dist/
 !integrations/device-consent/*.cjs
 !integrations/device-consent/*.html
 !integrations/device-consent/app.js
+
+!runtime/
+!runtime/*.py
+!runtime/*.cjs
+!runtime/20-bridge-runtime
+runtime/__pycache__/

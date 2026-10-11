@@ -48,7 +48,13 @@
     "integrations/device-consent/store.cjs",
     "integrations/device-consent/server.cjs",
     "integrations/device-consent/index.html",
-    "integrations/device-consent/app.js"
+    "integrations/device-consent/app.js",
+    "docs/MULTIWORKER-RUNTIME.md",
+    "runtime/ledger.py",
+    "runtime/queue.py",
+    "runtime/service.py",
+    "runtime/execute.cjs",
+    "runtime/20-bridge-runtime"
   ],
   "contracts": {
     "remote-worker.js": [

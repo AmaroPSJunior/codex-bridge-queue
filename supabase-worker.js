@@ -19,7 +19,7 @@ const {acquire:acquireWorkspace}=require('./executors/workspace-lock');
 const {displayTask,taskSummary}=require('./task-display');
 const {createProgress,localLog,sanitizer,commandStream}=require('./task-progress');
 const {createSpeaker}=require('./task-tts');
-const DIR=__dirname, STATE=path.join(DIR,'supabase-state');
+const DIR=__dirname, STATE=process.env.CODEX_BRIDGE_LIBRARY_ONLY==='1'&&process.env.CODEX_BRIDGE_STATE_DIR?path.resolve(process.env.CODEX_BRIDGE_STATE_DIR):path.join(DIR,'supabase-state');
 const config=JSON.parse(fs.readFileSync(path.join(DIR,'remote-config.json')));
 const sb=config.supabase||{};
 const url=(process.env.CODEX_SUPABASE_URL||sb.url||'').replace(/\/$/,'');
@@ -280,9 +280,19 @@ async function finish(task,run,progress){
     method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify(payload)
   });
   // Receipt is removed only after a read confirms publication (recoverResults).
-  if(['antigravity','local','groq'].includes(run.provider)||(run.providerSelection?.provider==='codex'&&(lifecycleSettings(process.env,config).validate)))void speak(displayTask(task),{status:ok?'completed':'failed',answer:result,error});
+  if(process.env.CODEX_BRIDGE_REPLAY_PUBLICATION!=='1'&&(['antigravity','local','groq'].includes(run.provider)||(run.providerSelection?.provider==='codex'&&(lifecycleSettings(process.env,config).validate))))void speak(displayTask(task),{status:ok?'completed':'failed',answer:result,error});
   log('execution_finish',{id:task.id,taskNumber:displayTask(task).number,status:finalStatus});
   return {...taskSummary({...task,status:finalStatus}),result,error,...run.gitMetadata};
+}
+async function verifyPublished(task,run){
+  let parsed;try{parsed=JSON.parse(run.stdout.trim());}catch{}
+  const status=run.code===0&&parsed?.status==='completed'?'succeeded':['command','plan'].includes(run.executionMode)&&parsed?.status==='cancelled'?'cancelled':'failed';
+  const clean=sanitizer(process.env);
+  const result=String(typeof parsed?.answer==='string'?parsed.answer:run.stdout||'(sem resposta textual)').split(/\r?\n/).map(clean).join('\n');
+  const rawError=parsed?.error||run.error||run.stderr||null;
+  const error=rawError&&String(rawError).split(/\r?\n/).map(clean).join('\n');
+  const rows=await request('bridge_tasks?id=eq.'+encodeURIComponent(task.id)+'&select=status,result,error&limit=1',{signal:AbortSignal.timeout(10000)});
+  return rows?.[0]?.status===status&&rows[0].result===result&&rows[0].error===error;
 }
 async function recoverResults(){
   for(const item of pendingReceipts(STATE)){
@@ -328,4 +338,7 @@ async function main(){
   }
   log('stopped');
 }
+if(process.env.CODEX_BRIDGE_LIBRARY_ONLY!=='1'){
 main().catch(e=>{log('fatal',{error:e.message});process.exitCode=1;});
+}
+module.exports={execute,finish,progressFor,recoverResults,verifyPublished};
