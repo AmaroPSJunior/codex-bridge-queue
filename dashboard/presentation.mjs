@@ -16,16 +16,19 @@ export function taskProgress(task){
  const reported=progressValue(task);
  return {value:reported===null?(stage?.[1]??25):Math.min(99,reported),label:stage?.[2]??'Executando a tarefa',estimated:reported===null};
 }
-export function taskActivity(task,now=Date.now(),connection='live'){
- const timestamp=Date.parse(task.last_progress_at||task.claimed_at||'');
- const age=Number.isFinite(timestamp)?Math.max(0,Math.floor((now-timestamp)/1000)):null;
- const since=age===null?'Sem atualização confirmada':age<60?`Atualização há ${age}s`:`Atualização há ${Math.floor(age/60)} min`;
- if(task.status!=='running')return {level:'quiet',text:'○ Execução não está em andamento',since};
- if(!['live','demo'].includes(connection))return {level:'attention',text:'! Conexão em recuperação — atividade não confirmada',since};
- if(age===null)return {level:'attention',text:'! Aguardando sinal de atividade',since};
- if(age>=300)return {level:'stalled',text:'! Possível travamento — sem novidades; não confirma falha',since};
- if(age>=120)return {level:'attention',text:'◷ Sem novidades recentes — a tarefa pode continuar trabalhando',since};
- return {level:'normal',text:'● Atividade recente',since};
+export function taskActivity(task,now=Date.now(),connection='live',limits={}){
+ const attention=Number.isFinite(limits.attentionMs)&&limits.attentionMs>0?limits.attentionMs:120000;
+ const stalled=Number.isFinite(limits.stalledMs)&&limits.stalledMs>=attention?limits.stalledMs:Math.max(300000,attention);
+ const timestamp=Date.parse(task.last_activity_at||'');
+ const age=Number.isFinite(timestamp)?Math.max(0,now-timestamp):null;
+ const total=Date.parse(task.claimed_at||'');
+ const count=/^\d+$/.test(String(task.activity_seq))?String(task.activity_seq):null;
+ const since=age===null?'Atividade indisponível':`Último evento há ${Math.floor(age/1000)}s`;
+ const base={since,count,age,total:Number.isFinite(total)?Math.max(0,now-total):null};
+ if(task.status!=='running')return {...base,level:'quiet',text:'Execução encerrada',visible:false};
+ if(age===null||count===null)return {...base,level:'attention',text:'Telemetria de atividade indisponível',visible:true};
+ if(!['live','demo'].includes(connection))return {...base,level:'attention',text:'Conexão em recuperação; atividade não confirmada',visible:true};
+ return {...base,visible:true,level:age>=stalled?'stalled':age>=attention?'attention':'normal',text:age>=stalled?'! Possível travamento — não confirma falha':age>=attention?'◷ Atenção: sem atividade recente':'● Atividade recente'};
 }
 
 export function canDeleteTask(task,mode='live'){return mode==='live'&&task?.status!=='running';}
