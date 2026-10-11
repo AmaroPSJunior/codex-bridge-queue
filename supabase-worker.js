@@ -4,6 +4,7 @@
 process.env.CODEX_BRIDGE_PERMISSIONS_PROFILE ||= 'bridge-git';
 const fs=require('fs'),path=require('path'),{spawn,spawnSync}=require('child_process');
 const workerControl=require('./executors/worker-control');
+const {legacyQueuePath}=require('./executors/device-routing');
 const {mode:executionMode,executeCommand}=require('./executors/command');
 const {executePlan}=require('./executors/plan');
 const {createCodexExecutor,toLegacyRun}=require('./executors/codex');
@@ -36,7 +37,8 @@ async function request(route,options={}){
   return text?JSON.parse(text):null;
 }
 async function next(){
-  const rows=await request('bridge_tasks?status=eq.queued&select=*&order=created_at.asc&limit=1');
+  // Legacy worker must never attempt to reserve a task assigned to another device.
+  const rows=await request(legacyQueuePath('bridge_tasks?status=eq.queued'));
   return rows?.[0]||null;
 }
 async function nextProjectProvision(){
