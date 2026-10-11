@@ -23,7 +23,8 @@ export async function createData(config,{onEvent,onLive,onState,onRefresh,onAuth
    const expiresAt=Number(session.expires_at||0)*1000;
    if(expiresAt&&expiresAt-Date.now()<60000){
     const refreshed=await client.auth.refreshSession();
-    if(refreshed.error||!refreshed.data?.session)return false;
+    if(refreshed.error){if(Number(refreshed.error.status)>=500||!refreshed.error.status)throw Error('Conexão indisponível; sessão preservada. Tente novamente.');return false;}
+    if(!refreshed.data?.session)return false;
    }
    let verified;
    try{verified=await client.auth.getUser();}catch{throw Error('Verificação temporariamente indisponível; sessão preservada.');}

@@ -19,6 +19,7 @@ function mode(task={}){
  return value;
 }
 function validate(payload){
+ if(payload&&Object.hasOwn(payload,'action'))return require('./device-actions').validate(payload);
  if(!payload||Array.isArray(payload)||typeof payload!=='object'||Object.keys(payload).some(k=>!['command','args','cwd','timeout_ms'].includes(k)))throw Error('Payload inválido.');
  const {command,args=[],cwd='.',timeout_ms=10000}=payload;
  const permitted={pwd:[[]],ls:[[],['-la']]};
@@ -45,9 +46,9 @@ function directory(root,relative){
  }
  const real=fs.realpathSync(current);if(real!==root&&!real.startsWith(root+path.sep))throw Error('Diretório recusado.');return real;
 }
-function executeCommand(payload,{cwd,env=process.env,signal,progress,spawnFn=spawn,timer=setTimeout,clear=clearTimeout}={}){
+function executeValidated(payload,{cwd,env=process.env,signal,progress,nonInterruptible=false,spawnFn=spawn,timer=setTimeout,clear=clearTimeout}={},prepared){
  let spec,dir;
- try{spec=validate(payload);dir=directory(cwd,spec.cwd);}catch{return Promise.resolve(envelope({exit_code:null,stdout:'',stderr:'',started_at:null,completed_at:new Date().toISOString(),error_code:'invalid_input'},true));}
+ try{spec=prepared||validate(payload);dir=directory(cwd,spec.cwd);}catch{return Promise.resolve(envelope({exit_code:null,stdout:'',stderr:'',started_at:null,completed_at:new Date().toISOString(),error_code:'invalid_input'},true));}
  const started=new Date().toISOString(),clean=sanitizer(env),output={stdout:'',stderr:''},pending={stdout:'',stderr:''},decoders={stdout:new StringDecoder('utf8'),stderr:new StringDecoder('utf8')};
  let child,reason=null,size=0,settled=false,deadline,grace;
  const promise=new Promise(resolve=>{
@@ -64,6 +65,8 @@ function executeCommand(payload,{cwd,env=process.env,signal,progress,spawnFn=spa
   function stop(code){
    if(settled||reason)return;reason=code;
    if(!child){void finish(null,true);return;}
+   // Irreversible remote actions may outlive their client. Never signal it on expiry.
+   if(nonInterruptible){void finish(null,false);return;}
    grace=timer(()=>void finish(null,false),5000);
    try{child.kill('SIGTERM');}catch{void finish(null,false);}
   }
@@ -73,7 +76,7 @@ function executeCommand(payload,{cwd,env=process.env,signal,progress,spawnFn=spa
   const executable=bins.map(bin=>path.join(bin,spec.command)).find(file=>{try{return fs.statSync(file).isFile();}catch{return false;}});
   const args=spec.args;
   if(!executable){reason='unavailable';void finish(null,true);return;}
-  try{child=spawnFn(executable,args,{cwd:dir,shell:false,stdio:['ignore','pipe','pipe'],env:{PATH:path.dirname(executable),LANG:'C.UTF-8'}});}catch{reason='unavailable';void finish(null,true);return;}
+  try{child=spawnFn(executable,args,{cwd:dir,shell:false,stdio:['ignore','pipe','pipe'],env:{PATH:bins.join(path.delimiter),LANG:'C.UTF-8',...(env.TMPDIR?{TMPDIR:env.TMPDIR}:{}),...(['adb','gh'].includes(spec.command)&&env.HOME?{HOME:env.HOME}:{}),...(spec.command==='gh'&&env.GH_TOKEN?{GH_TOKEN:env.GH_TOKEN}:{})}});}catch{reason='unavailable';void finish(null,true);return;}
   for(const stream of ['stdout','stderr'])child[stream].on('data',chunk=>{
    if(settled||reason)return;size+=Buffer.byteLength(chunk);
    if(size>MAX_OUTPUT){pending.stdout=pending.stderr='';emit('stderr','[saída excedeu limite; restante omitido]');stop('output_limit');return;}
@@ -91,5 +94,9 @@ function envelope(result,released){
  const ok=!result.error_code&&result.exit_code===0,status=ok?'completed':result.error_code==='cancelled'?'cancelled':'failed';
  const error=ok?null:({invalid_input:'Comando, diretório ou payload recusado.',timeout:'Comando excedeu o prazo.',cancelled:'Comando cancelado.',output_limit:'Saída excedeu 64 KiB.',unavailable:'Executável indisponível.',execution:'Comando terminou com falha.'}[result.error_code]||'Falha na execução.');
  return {code:ok?0:1,executionMode:'command',commandResult:result,stdout:JSON.stringify({status,answer:result.stdout||result.stderr||(ok?'Comando concluído sem saída.':''),error,workspaceReleased:released}),stderr:''};
+}
+function executeCommand(payload,options={}){
+ if(payload&&Object.hasOwn(payload,'action'))return require('./device-actions').execute(payload,options,(spec,opts)=>executeValidated(null,opts,spec));
+ return executeValidated(payload,options);
 }
 module.exports={mode,validate,directory,executeCommand,MAX_OUTPUT};

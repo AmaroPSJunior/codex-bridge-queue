@@ -82,10 +82,35 @@ async function main() {
       ws.pause?.();process.stderr.once('drain',()=>ws.resume?.());
     }
   };
-  const timeout = setTimeout(()=>finish('Timeout após '+TIMEOUT_MS+' ms; o turno pode continuar no app-server. Não reenviar automaticamente. Consulte o estado antes de tentar novamente.'),TIMEOUT_MS);
+  // Only correlated, new executor events renew inactivity. Socket traffic/heartbeats do not.
+  let timeout,hardTimeout;
+  const seenEvents=new Set();
+  const expire=()=>{
+    // Private checkpoint describes uncertainty, not permission to resume the turn.
+    const target=process.env.CODEX_BRIDGE_DIAGNOSTIC_FILE;
+    if(target){try{const tmp=target+'.tmp';fs.writeFileSync(tmp,JSON.stringify({threadId,turnId,at:new Date().toISOString(),state:'blocked',reason:'inactivity',activeCommands:[...commandOffsets.keys()]}),{mode:0o600});fs.renameSync(tmp,target);}catch{}}
+    finish('Timeout de inatividade após '+TIMEOUT_MS+' ms; execução requer diagnóstico. Não reenviar automaticamente. O turno pode continuar no app-server.');
+  };
+  function renew(){clearTimeout(timeout);timeout=setTimeout(expire,TIMEOUT_MS);}
+  function useful(msg,p){
+    if(p.turnId!==turnId)return false;
+    const method=msg.method;
+    if(!['item/started','item/completed','item/commandExecution/outputDelta','item/agentMessage/delta','item/reasoning/textDelta','item/reasoning/summaryTextDelta'].includes(method))return false;
+    const value=p.delta??p.item;
+    if(!value)return false;
+    const key=require('crypto').createHash('sha256').update(JSON.stringify([method,p.itemId||p.item?.id,value])).digest('hex');
+    if(seenEvents.has(key))return false;
+    // Bound memory, but stop extending on saturation rather than accepting replay.
+    if(seenEvents.size>=10000)return false;
+    seenEvents.add(key);return true;
+  }
+  renew();
+  const maxSetting=Number(process.env.CODEX_BRIDGE_MAX_RUNTIME_MS);
+  const maxRuntime=Number.isSafeInteger(maxSetting)&&maxSetting>0&&maxSetting<=2147483647?maxSetting:14400000;
+  hardTimeout=setTimeout(()=>finish('Limite defensivo de execução atingido; efeitos incertos. Não reenviar automaticamente.'),maxRuntime);
   function finish(error, terminal=false) {
     if (finished) return;
-    finished=true; clearTimeout(timeout);
+    finished=true; clearTimeout(timeout);clearTimeout(hardTimeout);
     if(terminal)workspaceLease.release();else workspaceLease.retain();
     if (JSON_MODE) console.log(JSON.stringify({threadId,turnId,status:error?'failed':'completed',answer,error:error||null,...(process.env.CODEX_BRIDGE_WORKSPACE_TOKEN?{workspaceReleased:terminal}:{})}));
     else if (error) console.error(error);
@@ -112,6 +137,7 @@ async function main() {
     }
     const p=msg.params;
     if (!p || p.threadId!==threadId || !turnId) return;
+    if(!finished&&useful(msg,p))renew();
     // Opt-in stderr only: preserve stdout JSON and suppress unrelated turns.
     if (!finished && process.env.CODEX_BRIDGE_PROGRESS==='1' && p.turnId===turnId) {
       if(msg.method==='item/commandExecution/outputDelta' && typeof p.delta==='string') {

@@ -1,0 +1,8 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# Install into Termux:Boot only during an explicitly approved cutover.
+ROOT="$HOME/codex-bridge"
+STATE="$HOME/.config/codex-bridge/runtime-v2"
+[ -f "$STATE/activation.json" ] || exit 0
+cd "$ROOT" || exit 1
+umask 077
+exec python3 -B -m runtime.service supervisor --state "$STATE" >> "$STATE/supervisor.log" 2>&1
