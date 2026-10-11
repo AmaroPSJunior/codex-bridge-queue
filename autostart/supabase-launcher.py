@@ -121,11 +121,32 @@ def supervise(lock_fd):
     handler.setFormatter(logging.Formatter('%(asctime)s %(message)s'))
     logger.addHandler(handler)
     def start():
+        # Read operator-owned configuration for every worker launch, including
+        # a supervisor-managed drain/restart. Never read credentials from here.
+        child_settings = {}
+        settings_file = PRIVATE / 'autocontinue.json'
+        if settings_file.exists() or settings_file.is_symlink():
+            fd = os.open(settings_file, os.O_RDONLY | os.O_NOFOLLOW)
+            with os.fdopen(fd) as stream:
+                info = os.fstat(stream.fileno())
+                if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                        or stat.S_IMODE(info.st_mode) != 0o600 or info.st_size > 1024):
+                    raise RuntimeError('Unsafe auto-continue configuration')
+                settings = json.load(stream)
+            if (not isinstance(settings, dict) or type(settings.get('enabled')) is not bool
+                    or type(settings.get('max_tasks')) is not int
+                    or not 1 <= settings['max_tasks'] <= 100
+                    or set(settings) != {'enabled', 'max_tasks'}):
+                raise RuntimeError('Invalid auto-continue configuration')
+            child_settings = {
+                'CODEX_BRIDGE_AUTOCONTINUE': '1' if settings['enabled'] else '0',
+                'CODEX_BRIDGE_AUTOCONTINUE_MAX': str(settings['max_tasks'])
+            }
         validate_lock(lock_fd)
         if workers():
             raise RuntimeError('Existing worker prevents launch')
         generation = str(uuid.uuid4())
-        child_env = {**env, 'BRIDGE_SUPERVISOR_GENERATION': generation}
+        child_env = {**env, **child_settings, 'BRIDGE_SUPERVISOR_GENERATION': generation}
         child = subprocess.Popen([shutil.which('node'), str(WORKER)], cwd=ROOT, env=child_env,
                                  stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                  stderr=subprocess.STDOUT, pass_fds=(lock_fd,))
