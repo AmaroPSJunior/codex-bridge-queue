@@ -58,4 +58,4 @@ async function main(){
  }
 }
 if(require.main===module)main().catch(()=>{console.error('Device worker startup refused');process.exitCode=1;});
-module.exports={config,isAllowed,rpc,one};
+module.exports={config,isAllowed,rpc,one,main};
