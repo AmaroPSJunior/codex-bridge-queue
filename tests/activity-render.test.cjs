@@ -2,7 +2,7 @@ const {test}=require('node:test'),assert=require('node:assert/strict'),fs=requir
 test('Real dashboard renders running activity across all task surfaces, hides it for terminal rows',async()=>{
  const core=await import('../dashboard/core.mjs'),presentation=await import('../dashboard/presentation.mjs');
  const elements=new Map();const element=id=>{if(!elements.has(id))elements.set(id,{innerHTML:'',textContent:'',querySelectorAll:()=>[],showModal(){}});return elements.get(id);};
- const document={querySelector:element,querySelectorAll:()=>[]};
+ const document={querySelector:selector=>selector==='#project-form'?null:element(selector),querySelectorAll:()=>[]};
  let source=fs.readFileSync('dashboard/app.mjs','utf8').replace(/^import .*;$/gm,'');
  source=source.slice(0,source.indexOf("window.addEventListener('hashchange'"));
  const ctx={...core,...presentation,e:core.escape,document,Date,console,createData(){},createPublicData(){},setTimeout,clearTimeout,location:{hash:''}};
