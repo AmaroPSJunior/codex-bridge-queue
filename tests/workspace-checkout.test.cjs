@@ -36,3 +36,9 @@ test('terminal success advances percentage and remains replayable',()=>{
   assert.match(worker,/ok&&Object\.hasOwn\(task,'progress_percent'\)\?\{progress_percent:100\}/);
   assert.match(receipt,/'progress_percent'/);
 });
+
+test('dashboard derives final progress label from successful terminal status',()=>{
+ const source=fs.readFileSync(path.join(root,'dashboard/app.mjs'),'utf8');
+ assert.ok(source.includes("r?.status==='succeeded'?'Concluída — 100%'"));
+ assert.ok(source.includes('terminalProgressLabel(r)'));
+});
