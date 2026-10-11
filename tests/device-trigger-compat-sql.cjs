@@ -41,6 +41,17 @@ const crypto=require('node:crypto');
   const events=(await db.query('select event,count(*)::int as n from bridge_dashboard_private.events group by event')).rows;
   assert.ok(events.some(e=>e.event==='changed'&&e.n>=3));
   assert.ok(events.some(e=>e.event==='retain'&&e.n>=3));
+  // Reproduce production's >100 terminal-history retention boundary.
+  // Unique IDs and identity numbers are generated in the disposable database.
+  await db.exec("insert into bridge_tasks(id,task_number,instruction,title,status) select gen_random_uuid(),n+1,'history','Historical','succeeded' from generate_series(1,120) as n");
+  const oldTerminal=(await db.query("select count(*)::int as n from bridge_tasks where status='succeeded' and task_number < 23")).rows[0].n;
+  assert.equal(oldTerminal,0,'old completed tasks must be retained only if in latest 100');
+  const remaining=(await db.query("select count(*)::int as n from bridge_tasks")).rows[0].n;
+  assert.equal(remaining,100,'retention keeps 100 most recent rows');
+  await db.exec("insert into bridge_tasks(id,task_number,instruction,title,status) values(gen_random_uuid(),122,'pending','Pending','queued')");
+  await db.exec("insert into bridge_tasks(id,task_number,instruction,title,status) values(gen_random_uuid(),123,'running','Running','running')");
+  const live=(await db.query("select count(*)::int as n from bridge_tasks where status in ('queued','running')")).rows[0].n;
+  assert.equal(live,2,'pending and running tasks must never be removed');
   console.log('PASS: actual identity/progress triggers; mocked dashboard notification and retention hooks');
  } finally {await db.close();}
 })().catch(e=>{console.error(e);process.exitCode=1});
