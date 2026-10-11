@@ -285,10 +285,11 @@ async function finish(task,run,progress){
   const finalStatus=ok?'succeeded':['command','plan'].includes(run.executionMode)&&parsed?.status==='cancelled'?'cancelled':'failed';
   const rawResult=typeof parsed?.answer==='string'?parsed.answer:run.stdout||'(sem resposta textual)';
   const result=String(rawResult).split(/\r?\n/).map(sanitizer(process.env)).join('\n');
-  const rawError=parsed?.error||run.error||run.stderr||null;
+  // Diagnostic stderr can contain non-error progress even on success.
+  const rawError=ok?null:(parsed?.error||run.error||run.stderr||null);
   const error=rawError&&String(rawError).split(/\r?\n/).map(sanitizer(process.env)).join('\n');
   if(progress)await progress.close(finalStatus);
-  const payload={status:finalStatus,result,error,completed_at:new Date().toISOString(),updated_at:new Date().toISOString()};
+  const payload={status:finalStatus,result,error,...(ok&&Object.hasOwn(task,'progress_percent')?{progress_percent:100}:{}),completed_at:new Date().toISOString(),updated_at:new Date().toISOString()};
   if(Object.hasOwn(task,'execution_mode'))payload.execution_mode=run.executionMode||'agent';
   if(run.executionMode==='command'){
     if(Object.hasOwn(task,'command_result')&&run.commandResult)payload.command_result=run.commandResult;
@@ -322,7 +323,7 @@ async function verifyPublished(task,run){
   const status=run.code===0&&parsed?.status==='completed'?'succeeded':['command','plan'].includes(run.executionMode)&&parsed?.status==='cancelled'?'cancelled':'failed';
   const clean=sanitizer(process.env);
   const result=String(typeof parsed?.answer==='string'?parsed.answer:run.stdout||'(sem resposta textual)').split(/\r?\n/).map(clean).join('\n');
-  const rawError=parsed?.error||run.error||run.stderr||null;
+  const rawError=status==='succeeded'?null:(parsed?.error||run.error||run.stderr||null);
   const error=rawError&&String(rawError).split(/\r?\n/).map(clean).join('\n');
   const rows=await request('bridge_tasks?id=eq.'+encodeURIComponent(task.id)+'&select=status,result,error&limit=1',{signal:AbortSignal.timeout(10000)});
   return rows?.[0]?.status===status&&rows[0].result===result&&rows[0].error===error;
