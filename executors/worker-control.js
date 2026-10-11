@@ -19,7 +19,11 @@ function confirm(state,id){if(!uuid.test(id))return;const dir=folder(state),file
 function checkpoint(state,workspace,pid){const dir=folder(state),file=path.join(dir,'drain.json');if(!fs.existsSync(file))return false;const r=read(file);if(r.pid!==pid||!uuid.test(r.id)||typeof r.nonce!=='string')return false;
  // Called only between tasks, after receipt reconciliation. Never signal readiness
  // while any publication is pending or an executor has retained its workspace lock.
- const publication=path.join(dir,'published-'+r.id+'.json');if(!fs.existsSync(publication)||read(publication).id!==r.id)return true;
+ const publication=path.join(dir,'published-'+r.id+'.json');
+ const request=path.join(dir,r.id+'.json');
+ const record=fs.existsSync(request)?read(request):null;
+ const local=record&&record.source==='local'&&record.command==='restart'&&record.status==='draining'&&record.pid===pid&&record.nonce===r.nonce;
+ if(!local&&(!fs.existsSync(publication)||read(publication).id!==r.id))return true;
  const pending=path.join(state,'pending-results');if(fs.existsSync(path.join(workspace,'.bridge-workspace-lock'))||fs.existsSync(pending)&&fs.readdirSync(pending).some(n=>/^[a-f0-9]{64}\.json$/.test(n)))return true;
  save(path.join(dir,'ready.json'),{id:r.id,pid,nonce:r.nonce});return true;
 }
