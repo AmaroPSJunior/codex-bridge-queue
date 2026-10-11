@@ -1,0 +1,14 @@
+<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Consentimento BYD</title>
+<h1>Autorizar uma ação específica</h1><p>Esta página não instala nem remove aplicativos. A autorização vale somente para a tarefa indicada. Confirme presencialmente as condições agora.</p>
+<form id="consent"><label>UUID da tarefa <input name="task_id" required pattern="[a-fA-F0-9-]{36}"></label><br>
+<label>Ação <select name="action"><option value="apk103.install">Instalar com.byd.carcontrol build 103 (atualização)</option><option value="app.uninstall">Remover com.byd.carcontrol do usuário 0 — apaga dados</option></select></label><br>
+<label>Dispositivo IP:5555 <input name="target" required placeholder="IP atual:5555"></label><br>
+<label>Validade em segundos <input name="ttl_seconds" type="number" min="30" max="300" value="120" required></label>
+<fieldset><legend>Confirmação presencial atual — nenhuma opção é pré-marcada</legend>
+<label><input type="checkbox" name="stationary" required>Veículo imóvel</label><br>
+<label><input type="checkbox" name="park" required>Seletor em P</label><br>
+<label><input type="checkbox" name="parking_brake" required>Freio de estacionamento aplicado</label><br>
+<label><input type="checkbox" name="clear_area" required>Área da persiana livre</label><br>
+<label><input type="checkbox" name="specific_action" required>Autorizo exatamente a ação e o dispositivo acima</label><br>
+<label><input type="checkbox" name="data_loss" required>Compreendo e aceito a perda de dados se a ação escolhida for remover</label></fieldset>
+<button>Registrar consentimento de uso único</button></form><pre id="result" role="status"></pre><script src="/app.js"></script></html>

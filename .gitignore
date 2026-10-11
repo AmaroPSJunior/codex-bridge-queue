@@ -61,3 +61,17 @@ dashboard/dist/
 !task-git.js
 **/*.bak
 **/*.bak.*
+
+# Audited local consent issuer source only; configuration stays outside the repo.
+!integrations/device-consent/
+!integrations/device-consent/*.cjs
+!integrations/device-consent/*.html
+!integrations/device-consent/app.js
+
+!runtime/
+!runtime/*.py
+!runtime/*.cjs
+!runtime/20-bridge-runtime
+runtime/__pycache__/
+
+!task-activity.js

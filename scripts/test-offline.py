@@ -15,6 +15,7 @@ with tempfile.TemporaryDirectory(prefix='bridge-offline-home-') as home:
         [shutil.which('node'), 'scripts/dashboard-build.cjs', '--check'],
         [sys.executable, 'scripts/generate-docs.py', '--check'],
         [shutil.which('node'), '--test', *map(str, sorted((root/'tests').glob('*.test.cjs')))],
+        [sys.executable, '-B', 'tests/test_runtime.py'],
         [sys.executable, '-B', 'tests/test_remote.py'],
         [sys.executable, '-B', '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_*autostart.py', '-v'],
         [sys.executable, '-B', 'tests/test_docs.py'],
