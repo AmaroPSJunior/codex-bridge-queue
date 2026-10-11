@@ -73,3 +73,5 @@ dashboard/dist/
 !runtime/*.cjs
 !runtime/20-bridge-runtime
 runtime/__pycache__/
+
+!task-activity.js

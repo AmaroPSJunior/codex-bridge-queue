@@ -4,3 +4,11 @@
 /* Playwright smoke trigger */
 
 .detail-actions{display:flex;justify-content:flex-end;margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}.danger{border:1px solid #6b2d39;background:#2a1218;color:#ff9aa8;border-radius:12px;padding:11px 14px;font-weight:750}.danger:hover:not(:disabled){background:#3a1821}.danger:disabled{opacity:.45;cursor:not-allowed}
+
+.activity-monitor{display:flex;flex-direction:column;gap:.35rem;margin:.8rem 0;padding:.7rem;border-left:3px solid #60a5fa;font-size:.82rem;text-align:left;white-space:normal}
+.activity-monitor small{color:var(--muted,#a8b3c7);font-variant-numeric:tabular-nums}
+.activity-monitor.attention{border-color:#fbbf24}.activity-monitor.stalled{border-color:#f87171}
+.hero.live progress,.live-progress progress,.task-card.running .mini-bar{animation:activity-glow 2s ease-in-out infinite}
+@keyframes activity-glow{50%{filter:brightness(1.3)}}
+@media(prefers-reduced-motion:reduce){.hero.live progress,.live-progress progress,.task-card.running .mini-bar{animation:none}}
+.paused progress,.paused .mini-bar{animation:none!important}

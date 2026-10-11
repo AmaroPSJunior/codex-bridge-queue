@@ -197,3 +197,7 @@ aprovados e 11 testes Python do runtime, além das suítes Python existentes.
 Não houve implantação, alteração de fila, operação ADB nem restart da produção.
 Os testes de crash/reboot são simulações locais com processos descartáveis; não
 foi reiniciado Android/Termux nem provada recuperação de uma thread Codex real travada.
+
+## Atividade e revisão incremental
+
+Veja [Atividade e recuperação](ACTIVITY-RECOVERY.md) para limites, monitor, timeout por inatividade e pendências de homologação.
