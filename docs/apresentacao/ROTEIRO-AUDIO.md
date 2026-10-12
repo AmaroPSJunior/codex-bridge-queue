@@ -1,4 +1,4 @@
-<!-- Gerado por npm run docs:generate; não editar. Fonte: docs/model.json. SHA256: 072ec74ecb4410263aa3741d1af63e47c30d4658f5476a2022b7d3156ae034ce -->
+<!-- Gerado por npm run docs:generate; não editar. Fonte: docs/model.json. SHA256: 88caa2ce7b7d43bc9b56980a93d53d4134ce0efa081855440594809c62cc1502 -->
 # Roteiro de áudio — explicação do projeto
 
 Idioma: português do Brasil. Duração estimada: 45–60 segundos, em ritmo de aproximadamente 150–190 palavras por minuto. Faça um ensaio antes de gravar; a duração depende da voz e das pausas.

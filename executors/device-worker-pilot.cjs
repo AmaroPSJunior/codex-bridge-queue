@@ -2,7 +2,7 @@
 // Minimal BYD pilot worker: only the literal pwd operation. No shell, ADB,
 // vehicle APIs, git, CodeX, updates or file writes. NOT started by default.
 const path=require('node:path');
-const {readFileSync}=require('node:fs');
+const {lstatSync}=require('node:fs');
 const {setTimeout:pause}=require('node:timers/promises');
 
 const must=(value,name)=>{if(typeof value!=='string'||!value)throw Error(name+' required');return value;};
@@ -32,30 +32,47 @@ async function rpc(cfg,name,body,fetcher=fetch){
  if(!response.ok)throw Error('RPC '+name+' failed with HTTP '+response.status);
  return response.json();
 }
-async function one(cfg,{fetcher=fetch,cwd=process.cwd()}={}){
+// Any fence blocks new work, including dead-owner, uncertain, unsafe and symlink
+// records. This guard never reads a lock token, checks a PID, or removes a lock.
+function workspaceReady(cwd){
+ try{lstatSync(path.join(cwd,'.bridge-workspace-lock'));}
+ catch(e){if(e.code==='ENOENT')return;throw Error('Workspace inspection failed');}
+ throw Error('Workspace fenced; authorized investigation required');
+}
+async function one(cfg,{fetcher=fetch,cwd=process.cwd(),retryPause=pause}={}){
+ workspaceReady(cwd);
  const claimed=await rpc(cfg,'bridge_device_claim',{p_device_id:cfg.id,p_token:cfg.token},fetcher);
  if(!Array.isArray(claimed)||!claimed.length)return 'idle';
  const task=claimed[0];
+ workspaceReady(cwd); // A newly appeared fence leaves this claim uncertain, never executed.
  // Always finalize a claimed task (unless network fails; then it remains uncertain).
  const ok=isAllowed(task);
  const response=ok?'pwd: '+path.resolve(cwd):'Device command rejected by read-only pilot allowlist';
- const complete=await rpc(cfg,'bridge_device_complete',{
-  p_device_id:cfg.id,p_token:cfg.token,p_task_id:task.task_id,
-  p_claim_nonce:task.claim_nonce,p_success:ok,p_result:response
- },fetcher);
- if(complete!==true)throw Error('Claim completion was not accepted');
- return ok?'completed':'rejected';
+ const completion={p_device_id:cfg.id,p_token:cfg.token,p_task_id:task.task_id,
+  p_claim_nonce:task.claim_nonce,p_success:ok,p_result:response};
+ // Retry only the identical completion, never claim or execute again.
+ // Phase3 makes an identical committed completion return true.
+ for(let attempt=0;attempt<3;attempt++){
+  try{
+   const accepted=await rpc(cfg,'bridge_device_complete',completion,fetcher);
+   if(accepted!==true)throw Object.assign(Error('Completion refused'),{refused:true});
+   return ok?'completed':'rejected';
+  }catch(e){
+   if(e.refused||attempt===2)throw Error('Reservation uncertain; administrative reconciliation required');
+   await retryPause(1000*(attempt+1));
+  }
+ }
 }
+
 async function main(){
  const cfg=config();
  // Explicit opt-in. This worker must NEVER run on the legacy phone supervisor.
  if(process.env.CODEX_DEVICE_WORKER_ENABLED!=='1')throw Error('Device worker not enabled');
  for(;;){
-  try{await one(cfg);}catch(e){
-   console.error('Device worker cycle failed (no secrets or task contents logged)');
-  }
+  // Stop on an uncertain reservation; do not accumulate claims.
+  await one(cfg);
   await pause(15000);
  }
 }
-if(require.main===module)main().catch(()=>{console.error('Device worker startup refused');process.exitCode=1;});
+if(require.main===module)main().catch(()=>{console.error('Device worker stopped or startup refused');process.exitCode=1;});
 module.exports={config,isAllowed,rpc,one,main};

@@ -40,3 +40,38 @@ test('unsupported task is completed as failed without running',async()=>{
  assert.equal(await one(config(env),{fetcher:fake}),'rejected');
  assert.equal(calls[1].p_success,false);
 });
+
+test('lost completion response retries identical payload without another claim',async()=>{
+ const calls=[];let completions=0;
+ const fake=async(url,options)=>{
+  calls.push({url,body:JSON.parse(options.body)});
+  if(url.endsWith('bridge_device_claim'))return {ok:true,json:async()=>[{task_id:'t',claim_nonce:'n',execution_mode:'command',command_payload:{command:'pwd',args:[],cwd:'.'}}]};
+  if(++completions===1)throw Error('response lost after commit');
+  return {ok:true,json:async()=>true};
+ };
+ assert.equal(await one(config(env),{fetcher:fake,retryPause:async()=>{}}),'completed');
+ assert.equal(calls.filter(c=>c.url.endsWith('bridge_device_claim')).length,1);
+ assert.deepEqual(calls[1].body,calls[2].body);
+});
+test('completion refusal stops instead of retrying or claiming again',async()=>{
+ let calls=0;
+ const fake=async(url)=>{calls++;return {ok:true,json:async()=>url.endsWith('bridge_device_claim')?[{task_id:'t',claim_nonce:'n'}]:false};};
+ await assert.rejects(one(config(env),{fetcher:fake,retryPause:async()=>{}}),/uncertain/);
+ assert.equal(calls,2);
+});
+test('persistent network failure bounds completion retries',async()=>{
+ let calls=0;
+ const fake=async(url)=>{calls++;if(url.endsWith('bridge_device_claim'))return {ok:true,json:async()=>[{task_id:'t',claim_nonce:'n'}]};throw Error('offline');};
+ await assert.rejects(one(config(env),{fetcher:fake,retryPause:async()=>{}}),/uncertain/);
+ assert.equal(calls,4);
+});
+
+test('fence appearing after claim prevents execution and completion',async t=>{
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'device-fence-race-'));
+ t.after(()=>fs.rmSync(root,{recursive:true,force:true}));let calls=0;
+ const fake=async()=>{calls++;fs.mkdirSync(path.join(root,'.bridge-workspace-lock'));return {ok:true,json:async()=>[{task_id:'t',claim_nonce:'n'}]};};
+ await assert.rejects(one(config(env),{cwd:root,fetcher:fake}),/Workspace fenced/);
+ assert.equal(calls,1);
+ assert.ok(fs.existsSync(path.join(root,'.bridge-workspace-lock')));
+});

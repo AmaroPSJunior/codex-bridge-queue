@@ -4,7 +4,17 @@ on:
     paths:
       - 'database/multi-device-*.sql'
       - 'tests/device-claim-sql.cjs'
+      - 'tests/device-recovery-sql.cjs'
+      - 'executors/device-worker-pilot.cjs'
+      - 'tests/device-worker-pilot.test.cjs'
       - 'tests/device-trigger-compat-sql.cjs'
+      - '.github/workflows/device-claim-sql.yml'
+  push:
+    branches: ['proposal/**']
+    paths:
+      - 'database/multi-device-*.sql'
+      - 'tests/device-*.cjs'
+      - 'executors/device-worker-pilot.cjs'
       - '.github/workflows/device-claim-sql.yml'
   workflow_dispatch:
 jobs:
@@ -23,3 +33,7 @@ jobs:
         run: node tests/device-claim-sql.cjs
       - name: Test trigger compatibility in isolated PostgreSQL
         run: node tests/device-trigger-compat-sql.cjs
+      - name: Test authorized recovery and completion reconciliation
+        run: node tests/device-recovery-sql.cjs
+      - name: Test pilot completion retries
+        run: node --test tests/device-worker-pilot.test.cjs
