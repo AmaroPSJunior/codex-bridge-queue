@@ -1,10 +1,13 @@
 {
   "repository": "AmaroPSJunior/codex-bridge-queue",
-  "allowedAuthors": ["AmaroPSJunior"],
+  "allowedAuthors": [
+    "AmaroPSJunior"
+  ],
   "pollSeconds": 15,
   "maxPromptBytes": 24000,
   "supabase": {
     "url": "https://pqskisosukkiurddlodw.supabase.co",
-    "pollSeconds": 15
+    "pollSeconds": 15,
+    "projectId": "04c581a1-a7a3-4394-912d-94e63a46ed16"
   }
 }
