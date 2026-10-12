@@ -32,14 +32,15 @@ def active():
     try: return CURRENT.resolve(strict=True)
     except FileNotFoundError: return None
 
-def workers(root):
-    target=(root/"supabase-worker.js").resolve()
+def workers(root=None):
+    target=(root/"supabase-worker.js").resolve() if root else None
     found=[]
     for proc in Path("/proc").glob("[0-9]*"):
         try:
             args=(proc/"cmdline").read_bytes().split(b"\0")
             cwd=Path(os.readlink(proc/"cwd"))
-            if any(a and (cwd/os.fsdecode(a)).resolve()==target for a in args[1:]):
+            candidates=[(cwd/os.fsdecode(a)).resolve() for a in args[1:] if a]
+            if (target and target in candidates) or (not target and any(p.name=="supabase-worker.js" for p in candidates)):
                 found.append(int(proc.name))
         except (OSError,ValueError):
             pass
@@ -71,7 +72,7 @@ def switch(dst):
 def status():
     a=active()
     journal=STATE/"journal.json"
-    out={"active":str(a) if a else None,"workers":workers(a) if a else []}
+    out={"active":str(a) if a else None,"workers":workers()}
     if journal.exists(): out["journal"]=json.loads(journal.read_text())
     print(json.dumps(out))
 
@@ -79,7 +80,7 @@ def recover():
     fd=lock()
     try:
         before=active()
-        if before and workers(before):
+        if workers():
             raise RuntimeError("active_worker_present_use_controlled_drain_first")
         dst=SLOTS/("B" if before and before.name=="A" else "A")
         write_json(STATE/"journal.json",{"phase":"preparing","previous":str(before) if before else None,"target":str(dst),"at":time.time()})
