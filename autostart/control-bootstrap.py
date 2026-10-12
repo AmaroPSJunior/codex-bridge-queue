@@ -21,7 +21,7 @@ spec.loader.exec_module(launcher)
 
 
 def api(method, suffix, body=None):
-    url = json.loads((ROOT/'remote-config.json').read_text())['supabase']['url'].rstrip('/')
+    config = json.loads((ROOT/'remote-config.json').read_text())\n    url = config['supabase']['url'].rstrip('/')
     parsed = urllib.parse.urlsplit(url)
     if parsed.scheme != 'https' or not parsed.hostname.endswith('.supabase.co') or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path:
         raise RuntimeError('endpoint_invalid')
@@ -78,7 +78,7 @@ def step(record, store, remote=api, is_ready=None, worker_list=None, launch=None
         task_id=record['tasks'][label]
         rows=remote('GET', '?id=eq.'+task_id+'&select=status,result,error&limit=1')
         if not rows:
-            remote('POST', '', {'id': task_id, 'instruction': json.dumps({'bridge_control': command}, separators=(',', ':')), 'status': 'queued'})
+            config=json.loads((ROOT/'remote-config.json').read_text())\n            project_id=config.get('supabase',{}).get('projectId')\n            if not project_id:\n                raise RuntimeError('project_id_missing')\n            remote('POST', '', {'id': task_id, 'project_id': project_id, 'title': 'Controle do worker: '+command, 'instruction': json.dumps({'bridge_control': command}, separators=(',', ':')), 'status': 'queued'})
             return {**record, 'phase': 'waiting_'+label}
         if rows[0]['status'] not in ('succeeded', 'failed', 'cancelled'):
             return {**record, 'phase': 'waiting_'+label}
