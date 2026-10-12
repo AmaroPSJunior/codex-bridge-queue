@@ -60,14 +60,16 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{spa
   assert.equal(Number((await q('select extract(epoch from(device_lease_expires_at-claimed_at)) as seconds from bridge_tasks where id=$1',[configured.task_id]))[0].seconds),60);
   // Reproduce executor death without signalling any existing process: a fresh
   // disposable child exits itself after acquiring its temporary workspace fence.
+  await enqueue({command:'sh',args:['-c','echo effect'],cwd:'.'});
+  const [orphan]=await claim();
+  assert.equal((await q('select status from bridge_tasks where id=$1',[orphan.task_id]))[0].status,'running');
   const lockModule=require.resolve('../executors/workspace-lock');
   const child=spawnSync(process.execPath,['-e',"require(process.argv[1]).acquire(process.argv[2]);process.exit(23)",lockModule,workspace],{stdio:'ignore'});
   assert.equal(child.status,23);
   const lock=path.join(workspace,'.bridge-workspace-lock');
   const ownerBefore=fs.readFileSync(path.join(lock,'owner.json'));
   const namesBefore=fs.readdirSync(lock);
-  await enqueue({command:'sh',args:['-c','echo effect'],cwd:'.'});
-  const [orphan]=await claim();await expire(orphan);
+  await expire(orphan);
   assert.equal(await recover(orphan,true),false,'worker death does not authorize effect replay');
   assert.equal(await recover(orphan,false,'worker died; fence retained'),true);
   assert.equal((await q('select status from bridge_tasks where id=$1',[orphan.task_id]))[0].status,'running');
