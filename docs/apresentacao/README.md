@@ -1,4 +1,4 @@
-<!-- Gerado por npm run docs:generate; não editar. Fonte: docs/model.json. SHA256: 9b64262c033826c099943be825a54f967ceaad61e556393e617a480ed8f51a8b -->
+<!-- Gerado por npm run docs:generate; não editar. Fonte: docs/model.json. SHA256: f38b717cb83d2cac6746efc793c1634a6d2050057b8d15d7e05210ff3a066bfd -->
 # Conheça a ponte: apresentação e downloads
 
 Você pede algo ao ChatGPT. Uma fila segura leva o pedido ao celular com Termux. O Codex faz o trabalho e devolve a resposta pelo mesmo caminho. GitHub ou Supabase organizam e transportam as tarefas, como um serviço de entrega.

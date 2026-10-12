@@ -1,7 +1,7 @@
 'use strict';
 // Disposable in-process PostgreSQL only. Never reads service configuration.
 const {PGlite}=require('@electric-sql/pglite');
-const fs=require('node:fs'),assert=require('node:assert/strict'),crypto=require('node:crypto');
+const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{spawnSync}=require('node:child_process'),assert=require('node:assert/strict'),crypto=require('node:crypto');
 (async()=>{
  const db=new PGlite();const id='10000000-0000-4000-8000-000000000001',token='A'.repeat(64);
  const q=async(sql,args)=>(await db.query(sql,args)).rows;
@@ -10,6 +10,7 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),crypto=require(
  const complete=(t,result='ok',credential=token)=>q('select bridge_device_complete($1,$2,$3,$4,true,$5) as ok',[id,credential,t.task_id,t.claim_nonce,result]).then(r=>r[0].ok);
  const expire=t=>q("update bridge_tasks set device_lease_expires_at=now()-interval '1 second' where id=$1",[t.task_id]);
  const enqueue=async(payload={command:'pwd',args:[],cwd:'.'})=>q("insert into bridge_tasks(id,instruction,status,executor_device_id,command_payload) values(gen_random_uuid(),'test','queued',$1,$2)",[id,JSON.stringify(payload)]);
+ const workspace=fs.mkdtempSync(path.join(os.tmpdir(),'device-orphan-regression-'));
  try{
   await db.exec("create role anon;create role authenticated;create role service_role;create table bridge_tasks(id uuid primary key,task_number bigint,instruction text,status text,execution_mode text default 'command',command_payload jsonb,executor_device_id uuid,created_at timestamptz default now(),claimed_at timestamptz,updated_at timestamptz,completed_at timestamptz,result text,error text)");
   for(const f of ['phase1','phase2-draft','phase3-recovery-proposal'])await db.exec(fs.readFileSync('database/multi-device-'+f+'.sql','utf8'));
@@ -57,6 +58,31 @@ const fs=require('node:fs'),assert=require('node:assert/strict'),crypto=require(
   await q('update bridge_device_recovery_config set lease_seconds=60');
   await enqueue();const [configured]=await claim();
   assert.equal(Number((await q('select extract(epoch from(device_lease_expires_at-claimed_at)) as seconds from bridge_tasks where id=$1',[configured.task_id]))[0].seconds),60);
+  // Reproduce executor death without signalling any existing process: a fresh
+  // disposable child exits itself after acquiring its temporary workspace fence.
+  const lockModule=require.resolve('../executors/workspace-lock');
+  const child=spawnSync(process.execPath,['-e',"require(process.argv[1]).acquire(process.argv[2]);process.exit(23)",lockModule,workspace],{stdio:'ignore'});
+  assert.equal(child.status,23);
+  const lock=path.join(workspace,'.bridge-workspace-lock');
+  const ownerBefore=fs.readFileSync(path.join(lock,'owner.json'));
+  const namesBefore=fs.readdirSync(lock);
+  await enqueue({command:'sh',args:['-c','echo effect'],cwd:'.'});
+  const [orphan]=await claim();await expire(orphan);
+  assert.equal(await recover(orphan,true),false,'worker death does not authorize effect replay');
+  assert.equal(await recover(orphan,false,'worker died; fence retained'),true);
+  assert.equal((await q('select status from bridge_tasks where id=$1',[orphan.task_id]))[0].status,'running');
+  const {one,config}=require('../executors/device-worker-pilot.cjs');let networkCalls=0;
+  const cfg=config({CODEX_SUPABASE_URL:'https://example.supabase.co',CODEX_SUPABASE_ANON_KEY:'test-only',CODEX_DEVICE_ID:id,CODEX_DEVICE_TOKEN:token});
+  await assert.rejects(one(cfg,{cwd:workspace,fetcher:async()=>{networkCalls++;throw Error('must not claim');}}),/Workspace fenced/);
+  assert.equal(networkCalls,0,'no new RPC with orphan workspace');
+  // Even an explicitly authorized safe requeue cannot bypass the local fence.
+  await enqueue();const [safeOrphan]=await claim();await expire(safeOrphan);
+  assert.equal(await recover(safeOrphan,true),true);
+  await assert.rejects(one(cfg,{cwd:workspace,fetcher:async()=>{networkCalls++;throw Error('must not claim');}}),/Workspace fenced/);
+  assert.equal(networkCalls,0);
+  assert.deepEqual(fs.readdirSync(lock),namesBefore);
+  assert.deepEqual(fs.readFileSync(path.join(lock,'owner.json')),ownerBefore);
+  assert.throws(()=>require(lockModule).acquire(workspace),/BUSY_OR_UNCERTAIN/);
   console.log('PASS recovery: lease, authorization, fencing, no effect replay, receipts, revocation and compatibility');
- }finally{await db.close()}
+ }finally{await db.close();fs.rmSync(workspace,{recursive:true,force:true})}
 })().catch(e=>{console.error(e);process.exitCode=1});

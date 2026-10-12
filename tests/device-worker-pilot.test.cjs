@@ -65,3 +65,13 @@ test('persistent network failure bounds completion retries',async()=>{
  await assert.rejects(one(config(env),{fetcher:fake,retryPause:async()=>{}}),/uncertain/);
  assert.equal(calls,4);
 });
+
+test('fence appearing after claim prevents execution and completion',async t=>{
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+ const root=fs.mkdtempSync(path.join(os.tmpdir(),'device-fence-race-'));
+ t.after(()=>fs.rmSync(root,{recursive:true,force:true}));let calls=0;
+ const fake=async()=>{calls++;fs.mkdirSync(path.join(root,'.bridge-workspace-lock'));return {ok:true,json:async()=>[{task_id:'t',claim_nonce:'n'}]};};
+ await assert.rejects(one(config(env),{cwd:root,fetcher:fake}),/Workspace fenced/);
+ assert.equal(calls,1);
+ assert.ok(fs.existsSync(path.join(root,'.bridge-workspace-lock')));
+});
