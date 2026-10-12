@@ -52,7 +52,7 @@ BEGIN
       status='running',claimed_at=now(),updated_at=now(),
       device_claim_nonce=gen_random_uuid(),
       device_lease_expires_at=now()+make_interval(secs=>v_lease),
-      device_replay_safe=(t.execution_mode='command' AND t.command_payload='{"command":"pwd","args":[],"cwd":"."}'::jsonb)
+      device_replay_safe=coalesce((t.execution_mode='command' AND t.command_payload='{"command":"pwd","args":[],"cwd":"."}'::jsonb),false)
     WHERE t.id=v_id AND t.status='queued' AND t.executor_device_id=p_device_id
     RETURNING t.id,t.task_number,t.instruction,t.execution_mode,
               t.command_payload,t.device_claim_nonce;
@@ -92,7 +92,7 @@ CREATE OR REPLACE FUNCTION public.bridge_device_recover(
 ) RETURNS boolean LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public AS $$
 DECLARE t public.bridge_tasks%ROWTYPE;
 BEGIN
- IF p_retry IS NULL OR p_reason IS NULL OR length(trim(p_reason)) NOT BETWEEN 1 AND 500 THEN RETURN false; END IF;
+ IF p_retry IS NULL OR p_reason IS NULL OR length(p_reason)>500 OR length(trim(p_reason))<1 THEN RETURN false; END IF;
  SELECT * INTO t FROM public.bridge_tasks WHERE id=p_task_id FOR UPDATE;
  IF EXISTS(SELECT 1 FROM public.bridge_device_recovery_audit
    WHERE task_id=p_task_id AND claim_nonce=p_claim_nonce AND retry=p_retry AND reason=p_reason) THEN RETURN true; END IF;

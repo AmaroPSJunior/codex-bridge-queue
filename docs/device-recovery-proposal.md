@@ -28,7 +28,7 @@ Implantar a migração antes do piloto atualizado: o protocolo antigo retorna fa
 
 Testes em PGlite descartável cobrem lease configurável, ACL da recuperação, fencing antes/depois da re-reserva, replay negado para efeitos, edição do payload, revogação, desabilitação, recibo após retenção e idempotência. Testes do piloto simulam resposta perdida e retries limitados. As suítes fase 2 continuam separadas para verificar compatibilidade anterior.
 
-Antes de implantação: validar concorrência em PostgreSQL real com conexões distintas (completion versus recover, claims paralelos e revogação em trânsito), triggers/RLS/ACLs efetivos, todos os owners SECURITY DEFINER e permissões CREATE do schema public. Owner postgres e service_role não são fronteiras de segurança contra administradores. Revogação concorrente não interrompe transação já iniciada; esclarecer o momento de efetividade operacional.
+A CI executa PostgreSQL real com conexões distintas: oito claims paralelos, doze disputas completion versus recover, conclusões duplicadas simultâneas e ACL de recuperação. Antes de implantação: validar revogação em trânsito, triggers/RLS/ACLs efetivos, todos os owners SECURITY DEFINER e permissões CREATE do schema public. Owner postgres e service_role não são fronteiras de segurança contra administradores. Revogação concorrente não interrompe transação já iniciada; esclarecer o momento de efetividade operacional.
 
 Não copiar credenciais administrativas para BYD. Não ativar a central por causa de CI verde. Primeiro comparar catálogos de produção, revisar PR, aprovar rollout e planejar piloto somente leitura. Qualquer ADB exige autorização específica e confirmação contemporânea de veículo estacionado. Esta proposta não modifica Supabase, worker do celular, locks ou carro.
 
@@ -41,3 +41,5 @@ O piloto recusa chamar claim se existir `.bridge-workspace-lock`, sem ler seu to
 A regressão SQL integrada cria apenas workspace temporário e um processo fictício que adquire o lock e termina por conta própria. Reproduz running com lease expirado, recusa replay de shell, registra incerteza, verifica zero chamadas de rede do piloto e preserva o lock byte a byte, inclusive após requeue autorizado de pwd. Nenhum processo de produção é interrompido; somente a fixture temporária é limpa após as verificações.
 
 Próximo passo operacional, separado da implantação: inspeção autorizada de sessões destacadas, estado Git e confirmação de término remoto; decisão documentada e procedimento específico para o workspace envolvido. Esta proposta não fornece ferramenta de remoção de lock.
+
+Revisão 428: payload SQL NULL continua reservável, mas nunca recebe permissão de replay. Justificativa administrativa com mais de 500 caracteres é recusada antes de mutação, sem erro de constraint.

@@ -58,6 +58,9 @@ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),{spa
   await q('update bridge_device_recovery_config set lease_seconds=60');
   await enqueue();const [configured]=await claim();
   assert.equal(Number((await q('select extract(epoch from(device_lease_expires_at-claimed_at)) as seconds from bridge_tasks where id=$1',[configured.task_id]))[0].seconds),60);
+  await enqueue(null);await q("update bridge_tasks set command_payload=null where status='queued'");const [nullPayload]=await claim();await expire(nullPayload);
+  assert.equal(await recover(nullPayload,true),false,'null payload remains claimable but never replayable');
+  assert.equal(await recover(nullPayload,false,' '+ 'x'.repeat(500)),false,'invalid reason rejected without constraint error');
   // Reproduce executor death without signalling any existing process: a fresh
   // disposable child exits itself after acquiring its temporary workspace fence.
   await enqueue({command:'sh',args:['-c','echo effect'],cwd:'.'});
