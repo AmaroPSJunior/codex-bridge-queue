@@ -1,0 +1,37 @@
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+
+RECOVER="$HOME/.local/bin/bridge-recover"
+LEGACY="$HOME/codex-bridge-main"
+REPO="https://github.com/AmaroPSJunior/codex-bridge-queue.git"
+
+fail(){ printf 'bridge-reboot: %s\n' "$*" >&2; exit 1; }
+
+[ -x "$RECOVER" ] || fail "bridge-recover não instalado"
+
+printf '[1/4] Encerrando geração ativa...\n'
+workers="$(pgrep -f '[s]upabase-worker\.js' || true)"
+for w in $workers; do
+  s="$(ps -o ppid= -p "$w" 2>/dev/null | tr -d ' ' || true)"
+  [ -z "$s" ] || kill -TERM "$s" 2>/dev/null || true
+  kill -TERM "$w" 2>/dev/null || true
+done
+pkill -TERM -f '[s]upabase-launcher\.py' 2>/dev/null || true
+
+for _ in $(seq 1 30); do
+  pgrep -f '[s]upabase-worker\.js' >/dev/null || break
+  sleep 1
+done
+pgrep -f '[s]upabase-worker\.js' >/dev/null && fail "worker ainda ativo; recuperação abortada com segurança"
+
+printf '[2/4] Atualizando controlador independente...\n'
+tmp="$(mktemp -d "$HOME/.cache/bridge-reboot.XXXXXX")"
+trap 'rm -rf "$tmp"' EXIT
+git clone --quiet --depth=1 --branch main "$REPO" "$tmp/repo"
+python3 "$tmp/repo/recovery/bridge-recover.py" install >/dev/null
+
+printf '[3/4] Preparando, validando e promovendo slot A/B...\n'
+"$RECOVER" recover
+
+printf '[4/4] Verificando estado final...\n'
+"$RECOVER" status
