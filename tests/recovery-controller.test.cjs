@@ -18,3 +18,6 @@ assert.match(src,/\.local\/bin\/bridge-recover/,'controller must install outside
 assert.match(src,/\.local\/bin\/bridge-reboot/,'installer must install the one-command reboot outside checkout');
 assert.doesNotMatch(src,/reset","--hard|git clean/,'controller must not destroy local work');
 console.log('recovery-controller tests passed');
+
+assert.match(src,/\.termux\/boot/,'installer must migrate Termux boot entrypoint');
+assert.match(src,/20-codex-bridge/,'installer must deploy canonical boot script');
