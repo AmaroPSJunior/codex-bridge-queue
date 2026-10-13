@@ -186,9 +186,12 @@ class LockTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.logs = Path(self.temp.name)
-        self.patch = patch.object(launcher, 'LOGS', self.logs)
-        self.patch.start()
-        self.addCleanup(self.patch.stop)
+        self.runtime_patch = patch.object(launcher, 'GLOBAL_RUNTIME', self.logs)
+        self.lock_patch = patch.object(launcher, 'GLOBAL_LOCK', self.logs/'supabase-worker.lock')
+        self.runtime_patch.start()
+        self.lock_patch.start()
+        self.addCleanup(self.runtime_patch.stop)
+        self.addCleanup(self.lock_patch.stop)
 
     def test_orphan_file_reused_without_unlink_and_exclusive(self):
         file = self.logs/'supabase-worker.lock'
