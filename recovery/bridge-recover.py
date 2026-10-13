@@ -117,6 +117,18 @@ def install():
     if reboot_src.is_file():
         shutil.copy2(reboot_src,reboot_dst)
         os.chmod(reboot_dst,0o700)
+    # Migrate Termux:Boot away from legacy checkouts before any recovery drain.
+    boot_src=Path(__file__).resolve().parent.parent/"autostart/20-codex-bridge"
+    boot_dir=HOME/".termux/boot"
+    boot_dst=boot_dir/"20-codex-bridge"
+    if boot_src.is_file():
+        boot_dir.mkdir(parents=True,exist_ok=True,mode=0o700)
+        if boot_dir.is_symlink() or not boot_dir.is_dir():
+            raise RuntimeError("unsafe_boot_directory")
+        tmp=boot_dir/".20-codex-bridge.tmp"
+        shutil.copy2(boot_src,tmp)
+        os.chmod(tmp,0o700)
+        os.replace(tmp,boot_dst)
     print(str(dst))
 
 def main():
