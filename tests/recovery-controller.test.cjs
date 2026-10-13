@@ -11,5 +11,6 @@ assert.match(src,/os\.replace\(tmp,CURRENT\)/,'slot promotion must be atomic');
 assert.match(src,/rolled_back/,'failed health check must journal rollback');
 assert.match(src,/npm","test/,'inactive slot must pass repository tests before promotion');
 assert.match(src,/\.local\/bin\/bridge-recover/,'controller must install outside checkout');
+assert.match(src,/\.local\/bin\/bridge-reboot/,'installer must install the one-command reboot outside checkout');
 assert.doesNotMatch(src,/reset","--hard|git clean/,'controller must not destroy local work');
 console.log('recovery-controller tests passed');
