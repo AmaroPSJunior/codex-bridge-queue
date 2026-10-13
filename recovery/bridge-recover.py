@@ -93,13 +93,16 @@ def recover():
         if p.returncode: raise RuntimeError("launcher_failed")
         time.sleep(3)
         data=json.loads(run([sys.executable,str(dst/"autostart/supabase-launcher.py"),"--status"],dst).stdout)
-        if len(data.get("worker_pids",[]))!=1:
-            if before:
-                switch(before)
-                subprocess.run([sys.executable,str(before/"autostart/supabase-launcher.py")],cwd=before,env=env,timeout=30)
-            write_json(STATE/"journal.json",{"phase":"rolled_back","failed_sha":sha,"previous":str(before) if before else None,"at":time.time()})
-            raise RuntimeError("health_check_failed")
-        write_json(STATE/"journal.json",{"phase":"healthy","active":str(dst),"sha":sha,"worker_pids":data["worker_pids"],"at":time.time()})
+        slot_workers=workers(dst)
+        global_workers=workers()
+        reported=sorted(data.get("worker_pids",[]))
+        healthy=(len(global_workers)==1 and global_workers==slot_workers and global_workers==reported)
+        if not healthy:
+            # Never certify a checkout-local view while another generation is alive.
+            # Fail closed: preserve evidence and do not start another generation here.
+            write_json(STATE/"journal.json",{"phase":"health_failed","failed_sha":sha,"previous":str(before) if before else None,"target":str(dst),"global_worker_pids":global_workers,"slot_worker_pids":slot_workers,"reported_worker_pids":reported,"at":time.time()})
+            raise RuntimeError("global_health_check_failed")
+        write_json(STATE/"journal.json",{"phase":"healthy","active":str(dst),"sha":sha,"worker_pids":global_workers,"at":time.time()})
         status()
     finally:
         os.close(fd)
