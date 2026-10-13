@@ -2,29 +2,41 @@
 set -euo pipefail
 
 RECOVER="$HOME/.local/bin/bridge-recover"
-LEGACY="$HOME/codex-bridge-main"
 REPO="https://github.com/AmaroPSJunior/codex-bridge-queue.git"
 
 fail(){ printf 'bridge-reboot: %s\n' "$*" >&2; exit 1; }
+pids(){ pgrep -f "$1" 2>/dev/null || true; }
 
 [ -x "$RECOVER" ] || fail "bridge-recover não instalado"
 
-printf '[1/4] Encerrando geração ativa...\n'
-workers="$(pgrep -f '[s]upabase-worker\.js' || true)"
-for w in $workers; do
-  s="$(ps -o ppid= -p "$w" 2>/dev/null | tr -d ' ' || true)"
-  [ -z "$s" ] || kill -TERM "$s" 2>/dev/null || true
-  kill -TERM "$w" 2>/dev/null || true
+printf '[1/4] Encerrando supervisores e workers...\n'
+# Stop every known supervisor generation first. Killing only its worker lets the
+# supervisor immediately recreate it and races the recovery controller.
+for pattern in '[s]upabase-launcher\.py' '[s]upabase-worker\.js'; do
+  for pid in $(pids "$pattern"); do
+    kill -TERM "$pid" 2>/dev/null || true
+  done
 done
-pkill -TERM -f '[s]upabase-launcher\.py' 2>/dev/null || true
 
-for _ in $(seq 1 30); do
-  pgrep -f '[s]upabase-worker\.js' >/dev/null || break
+# Require a stable zero-worker/zero-supervisor window before recovery. This
+# catches boot/legacy supervisors that recreate a worker after the first TERM.
+stable=0
+for _ in $(seq 1 45); do
+  if [ -z "$(pids '[s]upabase-launcher\.py')" ] && [ -z "$(pids '[s]upabase-worker\.js')" ]; then
+    stable=$((stable + 1))
+    [ "$stable" -ge 3 ] && break
+  else
+    stable=0
+    for pattern in '[s]upabase-launcher\.py' '[s]upabase-worker\.js'; do
+      for pid in $(pids "$pattern"); do kill -TERM "$pid" 2>/dev/null || true; done
+    done
+  fi
   sleep 1
 done
-pgrep -f '[s]upabase-worker\.js' >/dev/null && fail "worker ainda ativo; recuperação abortada com segurança"
+[ "$stable" -ge 3 ] || fail "supervisor/worker continua reiniciando; recuperação abortada com segurança"
 
 printf '[2/4] Atualizando controlador independente...\n'
+mkdir -p "$HOME/.cache"
 tmp="$(mktemp -d "$HOME/.cache/bridge-reboot.XXXXXX")"
 trap 'rm -rf "$tmp"' EXIT
 git clone --quiet --depth=1 --branch main "$REPO" "$tmp/repo"
