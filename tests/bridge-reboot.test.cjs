@@ -8,7 +8,7 @@ assert.match(src,/pids\(\).*pgrep -f/s,'must discover managed processes');
 assert.match(src,/upabase-worker/,'must discover active workers');
 assert.match(src,/kill -TERM/,'must request graceful termination before recovery');
 assert.match(src,/upabase-launcher/,'must stop supervisor generations before recovery');
-assert.match(src,/termux\\\/boot\\\/20-codex-bridge/,'must drain an in-flight legacy boot process');
+assert.ok(src.includes("'[.]termux/boot/20-codex-bridge'"),'must drain an in-flight legacy boot process');
 assert.match(src,/stable=.*0/,'must require a stable drained window');
 assert.match(src,/stable.*-ge 3/,'must observe multiple clean checks before recovery');
 assert.match(src,/mkdir -p.*\.cache/,'must create temporary clone parent safely');
