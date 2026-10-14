@@ -112,7 +112,7 @@ def install():
     dst.parent.mkdir(parents=True,exist_ok=True)
     shutil.copy2(Path(__file__).resolve(),dst)
     os.chmod(dst,0o700)
-    reboot_src=Path(__file__).resolve().with_name("bridge-reboot")
+    cli_src=Path(__file__).resolve().with_name("bridge")\n    cli_dst=HOME/".local/bin/bridge"\n    if cli_src.is_file():\n        shutil.copy2(cli_src,cli_dst)\n        os.chmod(cli_dst,0o700)\n    reboot_src=Path(__file__).resolve().with_name("bridge-reboot")
     reboot_dst=HOME/".local/bin/bridge-reboot"
     if reboot_src.is_file():
         shutil.copy2(reboot_src,reboot_dst)

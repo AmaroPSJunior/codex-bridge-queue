@@ -15,7 +15,7 @@ Para tarefas remotas, GitHub Issues ou Supabase transportam o pedido. O worker n
 - `executors/`: contratos e executores; políticas de comando e ciclo de vida.
 - `autostart/supabase-launcher.py`: supervisor do worker e lock global.
 - `recovery/bridge-recover.py`: controlador independente de atualização/rollback.
-- `recovery/bridge-reboot`: recuperação operacional de comando único.
+- `recovery/bridge`: interface operacional permanente (`update`, `reboot`, `status`, `repair`).\n- `recovery/bridge-reboot`: implementação compatível de recuperação operacional.
 - `dashboard/`: observabilidade e apresentação.
 - `database/`: contratos SQL versionados; aplicação em produção não é implícita.
 
@@ -49,7 +49,7 @@ O worker ativo nunca atualiza o próprio checkout. A recuperação prepara o slo
 ## Documentação especializada
 
 - `docs/TECNICO.md`: contratos detalhados e limites.
-- `docs/RECOVERY.md`: recuperação A/B.
+- `docs/RECOVERY.md`: recuperação A/B.\n- `docs/CLI.md`: referência completa dos comandos `bridge`.
 - `docs/WORKER-CONTROL.md`: controle do worker.
 - `docs/MULTIWORKER-RUNTIME.md`: runtime e concorrência.
 - `docs/DEVICE-ACTIONS.md`: ações em dispositivo.
