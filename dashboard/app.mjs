@@ -22,6 +22,13 @@ renderSound();
 function observeCompletion(rows){if(state.mode==='live'&&state.selectedProject)completionSound.observe(rows.filter(row=>row.project_id===state.selectedProject.id));}
 
 let liveHistoryRows=[],liveHistoryProject=null,liveHistoryBusy=false;
+let githubLiveRows=[],githubLiveProject=null,githubLiveBusy=false;
+async function loadGithubLive(){
+ if(githubLiveBusy||state.route!=='live'||!source?.liveEvents||state.mode!=='live'||!state.selectedProject)return;
+ const projectId=state.selectedProject.id;githubLiveBusy=true;
+ try{const rows=await source.liveEvents(projectId,100);if(state.selectedProject?.id!==projectId||state.route!=='live')return;githubLiveRows=rows||[];githubLiveProject=projectId;render();}catch{}finally{githubLiveBusy=false;}
+}
+function githubFeed(){const rows=githubLiveProject===state.selectedProject?.id?githubLiveRows:[];return '<section class="card github-live"><div class="section-title"><div><span class="kicker">GITHUB EM TEMPO REAL</span><h3>Atividade do projeto</h3></div><span class="count">'+rows.length+'</span></div><div class="github-event-list">'+(rows.length?rows.map(x=>'<article class="github-event"><span class="github-event-stage">'+e(x.stage||x.event_type||'GitHub')+'</span><div><strong>'+e(x.title||x.event_type||'Evento GitHub')+'</strong><small>'+e([x.status,x.action,x.ref].filter(Boolean).join(' · '))+' · '+e(ago(x.occurred_at))+'</small></div>'+(Number.isFinite(Number(x.percent))?'<b>'+e(x.percent)+'%</b>':'')+'</article>').join(''):'<div class="empty-state">Aguardando eventos do GitHub.</div>')+'</div></section>';}
 async function loadLiveHistory(){
  if(liveHistoryBusy||state.route!=='live'||!source||state.mode!=='live'||!state.selectedProject)return;
  const projectId=state.selectedProject.id;liveHistoryBusy=true;
@@ -80,7 +87,7 @@ function livePage(){
  const entries=[...(running?[running]:[]),...history.filter(x=>x.id!==running?.id)];
  return '<section class="live-page"><div class="live-head"><div><span class="live-pill"><i></i> '+(running?'EXECUTANDO':'ACOMPANHAMENTO')+'</span><h2>'+(running?e(label(running)):'Nenhuma tarefa em execução')+'</h2><p>'+(running?e(terminalProgressLabel(running)||'Acompanhando o Termux.'):'Selecione abaixo uma tarefa recente para consultar o histórico e a saída disponível.')+'</p></div><div class="live-percent">'+n+'%</div></div>'+
  (running?'<div class="live-progress active-progress"><progress aria-label="Progresso ao vivo" max="100" value="'+n+'"></progress></div>'+monitor(running):'')+
- '<div class="live-workspace-grid"><section class="terminal-card"><div class="terminal-top"><div><i></i><span>'+e(r?label(r):'Terminal')+'</span></div><small>Saída autorizada e atualizada automaticamente</small></div><pre id="live-terminal" class="live-terminal">'+e(outputText(r))+'</pre></section>'+
+ githubFeed()+'<div class="live-workspace-grid"><section class="terminal-card"><div class="terminal-top"><div><i></i><span>'+e(r?label(r):'Terminal')+'</span></div><small>Saída autorizada e atualizada automaticamente</small></div><pre id="live-terminal" class="live-terminal">'+e(outputText(r))+'</pre></section>'+
  '<section class="card live-history"><div class="section-title"><div><span class="kicker">HISTÓRICO</span><h3>Comandos e tarefas recentes</h3></div></div><div class="wins-list">'+(entries.length?entries.map(x=>'<button class="'+(r?.id===x.id?'selected ':'')+(x.status==='failed'?'failed':'')+'" data-live-task="'+e(x.id)+'"><span class="result-dot '+e(x.status)+'"></span><span>'+e(label(x))+'<small>'+e(copy[x.status]||statusLabel(x.status))+' · '+date(x.completed_at||x.updated_at)+'</small></span><i>›</i></button>').join(''):'<div class="empty-state">Nenhuma execução recente.</div>')+'</div></section></div></section>';
 }
 
@@ -131,7 +138,7 @@ async function refreshRoute(){
   const [rows,summary,projects]=await Promise.all(requests);
   state.rows=(rows||[]).map(normalize);observeCompletion(state.rows);state.stats=summary;state.projects=projects||[];
   if(state.route==='history'&&!['all','succeeded','failed','cancelled'].includes(state.status))state.status='all';
-  render();if(state.route==='live')void loadLiveHistory();
+  render();if(state.route==='live'){void loadLiveHistory();void loadGithubLive();}
  }catch{state.connection='offline';render();}
 }
 let refreshSequence=0;
@@ -152,7 +159,7 @@ async function event(payload){
  }
  render();
 }
-function liveEvent(payload){if(!payload||typeof payload!=='object'||!payload.id||!state.selectedProject||!state.rows.some(r=>r.id===payload.id))return;state.live.push(payload);if(state.live.length>500)state.live.splice(0,state.live.length-500);const row=state.rows.find(x=>x.id===payload.id);if(row&&typeof payload.percent==='number')row.progress_percent=payload.percent;if(state.route==='live'){render();requestAnimationFrame(()=>{const box=$('#live-terminal');if(box)box.scrollTop=box.scrollHeight;});}}
+function liveEvent(payload){if(payload?.feed==='github'){if(!state.selectedProject||payload.project_id!==state.selectedProject.id)return;githubLiveRows=[payload,...githubLiveRows.filter(x=>String(x.id)!==String(payload.id))].slice(0,100);githubLiveProject=state.selectedProject.id;if(state.route==='live')render();return;}if(!payload||typeof payload!=='object'||!payload.id||!state.selectedProject||!state.rows.some(r=>r.id===payload.id))return;state.live.push(payload);if(state.live.length>500)state.live.splice(0,state.live.length-500);const row=state.rows.find(x=>x.id===payload.id);if(row&&typeof payload.percent==='number')row.progress_percent=payload.percent;if(state.route==='live'){render();requestAnimationFrame(()=>{const box=$('#live-terminal');if(box)box.scrollTop=box.scrollHeight;});}}
 let restoreTimer=null,restoreAttempts=0;
 function showLoginWhenNeeded(){const dialog=$('#login-dialog');if(!dialog.open)dialog.showModal();}
 async function recoverSavedSession(){
@@ -196,12 +203,12 @@ async function boot(){
  }
 }
 
-function selectDefaultProject(){const preferred=state.projects.find(p=>p.id==='04c581a1-a7a3-4394-912d-94e63a46ed16')||state.projects.find(p=>/codex bridge/i.test(p.name||''));if(!preferred)return false;state.selectedProject=preferred;state.rows=[];state.stats=null;state.live=[];resetPage();render();void refreshRoute();return true;}
+function selectDefaultProject(){const preferred=state.projects.find(p=>p.id==='04c581a1-a7a3-4394-912d-94e63a46ed16')||state.projects.find(p=>/codex bridge/i.test(p.name||''));if(!preferred)return false;state.selectedProject=preferred;state.rows=[];state.stats=null;state.live=[];githubLiveRows=[];githubLiveProject=null;resetPage();render();void refreshRoute();return true;}
 function showProjectChooser(){
  if(state.mode!=='live'||!source)return;
  const dialog=$('#project-select-dialog'),list=$('#project-select-list'),err=$('#project-select-error');
  err.textContent='';
- const draw=()=>{list.innerHTML=(state.projects.length?state.projects.map(p=>'<button class="project-choice" data-project="'+e(p.id)+'" aria-pressed="'+(state.selectedProject?.id===p.id?'true':'false')+'"><strong>'+e(p.name)+'</strong><small>'+(p.github_repo_full_name?e(p.github_repo_full_name)+(p.github_branch?' · '+e(p.github_branch):''):'Sem repositório GitHub')+'</small></button>').join(''):'<div class="empty-state">Nenhum projeto cadastrado.</div>')+'<button class="project-choice project-new" id="project-new"><strong>＋ Criar novo projeto</strong><small>Cadastrar projeto antes de continuar</small></button>';list.querySelectorAll('[data-project]').forEach(btn=>btn.onclick=async()=>{const p=state.projects.find(x=>x.id===btn.dataset.project);if(!p)return;state.selectedProject=p;state.rows=[];state.stats=null;state.search='';state.status='all';state.live=[];resetPage();dialog.close();render();await refreshRoute();});const add=$('#project-new');if(add)add.onclick=()=>{dialog.close();state.route='projects';location.hash='projects';render();};};
+ const draw=()=>{list.innerHTML=(state.projects.length?state.projects.map(p=>'<button class="project-choice" data-project="'+e(p.id)+'" aria-pressed="'+(state.selectedProject?.id===p.id?'true':'false')+'"><strong>'+e(p.name)+'</strong><small>'+(p.github_repo_full_name?e(p.github_repo_full_name)+(p.github_branch?' · '+e(p.github_branch):''):'Sem repositório GitHub')+'</small></button>').join(''):'<div class="empty-state">Nenhum projeto cadastrado.</div>')+'<button class="project-choice project-new" id="project-new"><strong>＋ Criar novo projeto</strong><small>Cadastrar projeto antes de continuar</small></button>';list.querySelectorAll('[data-project]').forEach(btn=>btn.onclick=async()=>{const p=state.projects.find(x=>x.id===btn.dataset.project);if(!p)return;state.selectedProject=p;state.rows=[];state.stats=null;state.search='';state.status='all';state.live=[];githubLiveRows=[];githubLiveProject=null;resetPage();dialog.close();render();await refreshRoute();});const add=$('#project-new');if(add)add.onclick=()=>{dialog.close();state.route='projects';location.hash='projects';render();};};
  draw();
  if(!dialog.open)dialog.showModal();
  void source.projects().then(p=>{state.projects=p||[];draw();}).catch(()=>{err.textContent='Não foi possível atualizar os projetos.';});
