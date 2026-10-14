@@ -45,6 +45,17 @@ case "$cmd" in
     python3 "$tmp/repo/recovery/bridge-recover.py" install >/dev/null
     exec "$BIN/bridge-reboot"
     ;;
+  -v|--version)
+    current="$HOME/.local/share/codex-bridge/current"
+    if [ -d "$current/.git" ]; then
+      git -C "$current" rev-parse --short HEAD
+    elif [ -s "$BIN/bridge-version" ]; then
+      cat "$BIN/bridge-version"
+    else
+      printf 'bridge: versão instalada indisponível\n' >&2
+      exit 1
+    fi
+    ;;
   help|-h|--help)
     usage
     ;;

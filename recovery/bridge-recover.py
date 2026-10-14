@@ -124,6 +124,13 @@ def install():
     if reboot_src.is_file():
         shutil.copy2(reboot_src,reboot_dst)
         os.chmod(reboot_dst,0o700)
+    # Keep bootstrap version available before an A/B runtime is activated.
+    source_root=Path(__file__).resolve().parent.parent
+    version=run(["git","-C",str(source_root),"rev-parse","--short","HEAD"],check=False)
+    if version.returncode == 0:
+        version_dst=dst.with_name("bridge-version")
+        version_dst.write_text(version.stdout.strip()+"\n")
+        os.chmod(version_dst,0o600)
     # Migrate Termux:Boot away from legacy checkouts before any recovery drain.
     boot_src=Path(__file__).resolve().parent.parent/"autostart/20-codex-bridge"
     boot_dir=HOME/".termux/boot"

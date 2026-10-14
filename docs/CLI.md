@@ -31,7 +31,7 @@ Rebaixa somente o controlador/CLI a partir da `main`, reinstala os comandos em `
 
 ### `bridge --version`
 
-Mostra o SHA curto do runtime ativo.
+Mostra o SHA curto do runtime ativo. Antes da ativação A/B, mostra o SHA do checkout usado no bootstrap, registrado pelo instalador.
 
 ## Instalação e atualização
 
