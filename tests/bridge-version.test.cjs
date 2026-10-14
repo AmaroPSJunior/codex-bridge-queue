@@ -1,0 +1,25 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const {spawnSync} = require('node:child_process');
+const cli = path.resolve(__dirname, '../recovery/bridge');
+test('CLI version uses bootstrap metadata and prefers the active runtime', t => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'bridge-version-'));
+  t.after(() => fs.rmSync(home, {recursive:true, force:true}));
+  const env = {...process.env, HOME:home};
+  const invoke = arg => spawnSync('bash', [cli, arg], {env, encoding:'utf8'});
+  assert.equal(invoke('-h').status, 0);
+  assert.equal(invoke('--version').status, 1);
+  fs.mkdirSync(path.join(home, '.local/bin'), {recursive:true});
+  fs.writeFileSync(path.join(home, '.local/bin/bridge-version'), 'abcdef1\n');
+  assert.equal(invoke('--version').stdout, 'abcdef1\n');
+  const active = path.join(home, '.local/share/codex-bridge/current');
+  fs.mkdirSync(active, {recursive:true});
+  const git = args => spawnSync('git', ['-C',active,...args], {env,encoding:'utf8'});
+  assert.equal(git(['init']).status, 0);
+  assert.equal(git(['-c','user.name=Test','-c','user.email=test@example.com','commit','--allow-empty','-m','test']).status, 0);
+  assert.equal(invoke('--version').stdout, git(['rev-parse','--short','HEAD']).stdout);
+  assert.equal(invoke('-v').status, 0);
+});
