@@ -12,7 +12,7 @@ Code Bridge
   bridge update   baixa, valida e promove a main pelo runtime A/B
   bridge reboot   recupera/atualiza e reinicia o worker
   bridge status   mostra slot, worker e journal atuais
-  bridge repair   reinstala os comandos de controle e executa recovery
+  bridge repair   reinstala os comandos de controle e executa recovery\n\nOpções:\n  -h, --help      mostra esta ajuda\n  -v, --version   mostra a versão/SHA do runtime ativo
 EOF
 }
 
