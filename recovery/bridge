@@ -1,0 +1,56 @@
+#!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
+
+BIN="$HOME/.local/bin"
+RECOVER="$BIN/bridge-recover"
+REBOOT="$BIN/bridge-reboot"
+REPO="https://github.com/AmaroPSJunior/codex-bridge-queue.git"
+
+usage() {
+  cat <<'EOF'
+Code Bridge
+  bridge update   baixa, valida e promove a main pelo runtime A/B
+  bridge reboot   recupera/atualiza e reinicia o worker
+  bridge status   mostra slot, worker e journal atuais
+  bridge repair   reinstala os comandos de controle e executa recovery
+EOF
+}
+
+need_recover() {
+  [ -x "$RECOVER" ] || {
+    printf 'bridge: controlador ausente; execute o bootstrap inicial neste dispositivo.\n' >&2
+    exit 1
+  }
+}
+
+cmd="${1:-status}"
+case "$cmd" in
+  update)
+    need_recover
+    exec "$REBOOT"
+    ;;
+  reboot)
+    [ -x "$REBOOT" ] || { printf 'bridge: bridge-reboot não instalado\n' >&2; exit 1; }
+    exec "$REBOOT"
+    ;;
+  status)
+    need_recover
+    exec "$RECOVER" status
+    ;;
+  repair)
+    mkdir -p "$HOME/.cache"
+    tmp="$(mktemp -d "$HOME/.cache/bridge-repair.XXXXXX")"
+    trap 'rm -rf "$tmp"' EXIT
+    git clone --quiet --depth=1 --branch main "$REPO" "$tmp/repo"
+    python3 "$tmp/repo/recovery/bridge-recover.py" install >/dev/null
+    exec "$BIN/bridge-reboot"
+    ;;
+  help|-h|--help)
+    usage
+    ;;
+  *)
+    printf 'bridge: comando desconhecido: %s\n' "$cmd" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
