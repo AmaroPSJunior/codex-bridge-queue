@@ -17,6 +17,7 @@ const {observation}=require('./executors/task-metadata');
 const {createLifecycle,lifecycleSettings}=require('./executors/task-lifecycle');
 const {receipt,pending:pendingReceipts}=require('./executors/result-receipt');
 const {selectProvider,requireImplemented}=require('./executors/provider-config');
+const {isProviderRefusal}=require('./executors/provider-outcome');
 const {acquire:acquireWorkspace}=require('./executors/workspace-lock');
 const {displayTask,taskSummary}=require('./task-display');
 const {createProgress,localLog,sanitizer,commandStream}=require('./task-progress');
@@ -285,12 +286,13 @@ function execute(prompt,task={},progress){
 async function finish(task,run,progress){
   const metadata=observation(task,run,process.env);
   let parsed; try{parsed=JSON.parse(run.stdout.trim());}catch{}
-  const ok=run.code===0&&parsed?.status==='completed';
+  const refused=run.code===0&&parsed?.status==='completed'&&isProviderRefusal(parsed?.answer);
+  const ok=run.code===0&&parsed?.status==='completed'&&!refused;
   const finalStatus=ok?'succeeded':['command','plan'].includes(run.executionMode)&&parsed?.status==='cancelled'?'cancelled':'failed';
   const rawResult=typeof parsed?.answer==='string'?parsed.answer:run.stdout||'(sem resposta textual)';
   const result=String(rawResult).split(/\r?\n/).map(sanitizer(process.env)).join('\n');
   // Diagnostic stderr can contain non-error progress even on success.
-  const rawError=ok?null:(parsed?.error||run.error||run.stderr||null);
+  const rawError=ok?null:(refused?'Provider recusou a solicitação; nenhuma execução foi comprovada.':parsed?.error||run.error||run.stderr||null);
   const error=rawError&&String(rawError).split(/\r?\n/).map(sanitizer(process.env)).join('\n');
   if(progress)await progress.close(finalStatus);
   const payload={status:finalStatus,result,error,...(ok&&Object.hasOwn(task,'progress_percent')?{progress_percent:100}:{}),completed_at:new Date().toISOString(),updated_at:new Date().toISOString()};
@@ -325,10 +327,11 @@ async function finish(task,run,progress){
 }
 async function verifyPublished(task,run){
   let parsed;try{parsed=JSON.parse(run.stdout.trim());}catch{}
-  const status=run.code===0&&parsed?.status==='completed'?'succeeded':['command','plan'].includes(run.executionMode)&&parsed?.status==='cancelled'?'cancelled':'failed';
+  const refused=run.code===0&&parsed?.status==='completed'&&isProviderRefusal(parsed?.answer);
+  const status=run.code===0&&parsed?.status==='completed'&&!refused?'succeeded':['command','plan'].includes(run.executionMode)&&parsed?.status==='cancelled'?'cancelled':'failed';
   const clean=sanitizer(process.env);
   const result=String(typeof parsed?.answer==='string'?parsed.answer:run.stdout||'(sem resposta textual)').split(/\r?\n/).map(clean).join('\n');
-  const rawError=status==='succeeded'?null:(parsed?.error||run.error||run.stderr||null);
+  const rawError=status==='succeeded'?null:(refused?'Provider recusou a solicitação; nenhuma execução foi comprovada.':parsed?.error||run.error||run.stderr||null);
   const error=rawError&&String(rawError).split(/\r?\n/).map(clean).join('\n');
   const rows=await request('bridge_tasks?id=eq.'+encodeURIComponent(task.id)+'&select=status,result,error&limit=1',{signal:AbortSignal.timeout(10000)});
   return rows?.[0]?.status===status&&rows[0].result===result&&rows[0].error===error;
