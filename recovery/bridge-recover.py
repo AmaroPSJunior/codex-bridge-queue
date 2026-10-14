@@ -58,6 +58,8 @@ def prepare(dst):
     if dst.exists(): shutil.rmtree(dst)
     dst.parent.mkdir(parents=True,exist_ok=True)
     run(["git","clone","--depth=1","--branch","main",REPO,str(dst)],timeout=300)
+    # Runtime dependencies belong to the prepared slot; validate and promote only a runnable checkout.
+    run(["npm","ci","--omit=dev","--ignore-scripts"],dst,timeout=300)
     validate(dst)
     return run(["git","rev-parse","HEAD"],dst).stdout.strip()
 
