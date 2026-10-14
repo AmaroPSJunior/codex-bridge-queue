@@ -2,7 +2,7 @@
 // Fixed artifact and typed argv only. Only the owner-approved pinned install is exempt from custom consent.
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),net=require('node:net');
 const APK={repo:'AmaroPSJunior/Byd-dilink',run:'38040436925',name:'byd-car-control-v1.0.103.apk',sha256:'270bfca86f8cb46f430eb8c060b0935efc78a6e1a7fc6f60fa9c5014d875a582',package:'com.byd.carcontrol'};
-const INSTALL_TARGET='10.23.201.181:5555';
+const INSTALL_TARGET='10.117.236.181:5555';
 const actions=['adb.connect','adb.inspect','apk103.download','apk103.validate','apk103.install','app.uninstall','app.verify'];
 function validate(p){
  if(!p||typeof p!=='object'||Array.isArray(p)||Object.keys(p).some(k=>!['action','target'].includes(k))||!actions.includes(p.action))throw Error('invalid_input');
