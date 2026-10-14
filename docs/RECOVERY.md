@@ -1,6 +1,6 @@
 # Operação e recuperação do Code Bridge
 
-## Comando único
+## Interface permanente\n\nDepois do bootstrap inicial, o operador usa somente o comando `bridge`. A implementação pode evoluir no GitHub sem exigir que novos scripts sejam copiados manualmente para cada dispositivo.\n\n```sh\nbridge update\nbridge reboot\nbridge status\nbridge repair\n```\n\n`bridge update` usa o mesmo recovery A/B validado: baixa a `main`, testa o slot inativo, promove somente após validação e reinicia com health check. `bridge repair` reinstala a interface de controle a partir da `main` e então executa o recovery.\n\n## Comando único de recovery
 
 O operador não precisa memorizar a sequência interna de recuperação. Depois da instalação inicial, use:
 
@@ -26,7 +26,7 @@ O comando executa uma recuperação fail-closed:
 
 ## Instalação
 
-`python3 recovery/bridge-recover.py install` instala `bridge-recover`. A instalação do `bridge-reboot` é feita pelo mesmo instalador e ambos ficam em `~/.local/bin`.
+`python3 recovery/bridge-recover.py install` instala `bridge-recover`. A instalação de `bridge`, `bridge-reboot` e `bridge-recover` é feita pelo mesmo instalador; todos ficam em `~/.local/bin`.
 
 ## Diagnóstico
 
