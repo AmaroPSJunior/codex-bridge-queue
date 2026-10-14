@@ -21,6 +21,7 @@ function harness(t,file,options={}) {
   if(name==='./executors/plan')return options.modules?.[name]||require('../executors/plan');
   if(name==='./executors/workspace-lock')return options.modules?.[name]||{acquire:()=>({token:undefined,release(){},retain(){}})};
   if(name==='./executors/provider-config')return require('../executors/provider-config');
+  if(name==='./executors/provider-outcome')return require('../executors/provider-outcome');
   if(name==='./executors/task-lifecycle')return options.modules?.[name]||require('../executors/task-lifecycle');
   if(name==='./executors/worker-control')return require('../executors/worker-control');
   if(name==='./executors/result-receipt')return require('../executors/result-receipt');
