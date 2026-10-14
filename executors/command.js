@@ -28,7 +28,9 @@ function validate(payload){
   ['version'],['devices','-l'],['connect',adbTarget],
   ['-s',adbTarget,'shell','getprop','ro.build.version.release'],
   ['-s',adbTarget,'shell','getprop','ro.build.fingerprint'],
-  ['-s',adbTarget,'shell','getprop','ro.product.model']
+  ['-s',adbTarget,'shell','getprop','ro.product.model'],
+  ['-s',adbTarget,'shell','input','text','bridge\\ update'],
+  ['-s',adbTarget,'shell','input','keyevent','66']
  ];
  if(!Array.isArray(args)||!(command==='adb'
    ?safeAdbArgs.some(a=>JSON.stringify(a)===JSON.stringify(args))
