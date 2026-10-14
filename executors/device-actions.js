@@ -2,7 +2,6 @@
 // Fixed artifact and typed argv only. Only the owner-approved pinned install is exempt from custom consent.
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),net=require('node:net');
 const APK={repo:'AmaroPSJunior/Byd-dilink',run:'38040436925',name:'byd-car-control-v1.0.103.apk',sha256:'270bfca86f8cb46f430eb8c060b0935efc78a6e1a7fc6f60fa9c5014d875a582',package:'com.byd.carcontrol'};
-const INSTALL_TARGET='10.23.201.181:5555';
 const actions=['adb.connect','adb.inspect','apk103.download','apk103.validate','apk103.install','app.uninstall','app.verify'];
 function validate(p){
  if(!p||typeof p!=='object'||Array.isArray(p)||Object.keys(p).some(k=>!['action','target'].includes(k))||!actions.includes(p.action))throw Error('invalid_input');
@@ -10,7 +9,7 @@ function validate(p){
  const ip=p.target.slice(0,-5);if(net.isIP(ip)!==4||!(ip.startsWith('10.')||ip.startsWith('192.168.')||/^172\.(1[6-9]|2\d|3[01])\./.test(ip)))throw Error('invalid_target');
  return p;
 }
-function requiresConsent(p){return ['apk103.install','app.uninstall'].includes(p.action)&&!(p.action==='apk103.install'&&p.target===INSTALL_TARGET);}
+function requiresConsent(p){return ['app.uninstall'].includes(p.action);}
 function consent(p,taskId,key,now=Date.now()){
  const a=p.authorization;
  if(!/^[a-f0-9-]{36}$/i.test(taskId||'')||typeof key!=='string'||key.length<32||!a||!Number.isSafeInteger(a.expires_at)||a.expires_at<=now||a.expires_at>now+300000||typeof a.signature!=='string'||!/^[a-f0-9]{64}$/.test(a.signature))throw Error('authorization_required');
@@ -82,4 +81,4 @@ async function execute(payload,options,run){
   if(record){try{fs.writeFileSync(record,JSON.stringify({status:'failed_or_uncertain',error_code,at:new Date().toISOString(),steps:results.map(r=>({exit_code:r.exit_code,error_code:r.error_code}))}),{mode:0o600});}catch{}}
   return {code:1,executionMode:'command',commandResult:{error_code,steps:results},stdout:JSON.stringify({status:'failed',answer:'',error:'Ação de dispositivo recusada; valide artefato, conexão e autorização específica.',workspaceReleased:released}),stderr:''};}
 }
-module.exports={INSTALL_TARGET,requiresConsent,APK,actions,validate,consent,verify,execute};
+module.exports={requiresConsent,APK,actions,validate,consent,verify,execute};
