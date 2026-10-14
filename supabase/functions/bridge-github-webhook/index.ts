@@ -11,11 +11,11 @@ async function valid(body:string,sig:string,secret:string){
 }
 function mapped(event:string,p:any){
  const action=String(p.action||"");let stage="github",status:string|null=null,percent:number|null=null,title=event;
- if(event==="workflow_run"){stage="ci";status=p.workflow_run?.status||null;percent=status==="completed"?100:50;title=p.workflow_run?.name||"GitHub Actions";}
- else if(event==="workflow_job"){stage="ci";status=p.workflow_job?.status||null;percent=status==="completed"?100:60;title=p.workflow_job?.name||"Job";}
+ if(event==="workflow_run"){stage="ci";status=p.workflow_run?.status||null;percent=status==="completed"?100:null;title=p.workflow_run?.name||"GitHub Actions";}
+ else if(event==="workflow_job"){stage="ci";status=p.workflow_job?.status||null;percent=status==="completed"?100:null;title=p.workflow_job?.name||"Job";}
  else if(event==="pull_request"){stage="pull_request";status=p.pull_request?.merged?"merged":action;title=p.pull_request?.title||"Pull request";}
  else if(event==="push"){stage="commit";status="pushed";title=p.head_commit?.message||"Push";}
- else if(event==="create"){stage="branch";status="created";title="Referência criada";}
+ else if(event==="create"){stage=p.ref_type==="branch"?"branch":"github";status="created";title=p.ref_type==="branch"?"Branch criada":"Referência criada";}
  return {action,stage,status,percent,title};
 }
 Deno.serve(async(req)=>{
