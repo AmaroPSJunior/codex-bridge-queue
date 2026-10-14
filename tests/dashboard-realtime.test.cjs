@@ -47,3 +47,15 @@ test('authenticated realtime performs catch-up on initial subscribe and reconnec
   assert.equal(refreshes,2);
   await api.close();
 });
+
+
+test('authenticated realtime subscribes to GitHub activity feed',async()=>{
+  const {createData}=await import('../dashboard/data.mjs');
+  const config={supabaseUrl:'https://example.supabase.co',publishableKey:'sb_publishable_fixture'};
+  const events=[];let handlers={};
+  const channel={on(_kind,filter,fn){handlers[filter.event]=fn;return this;},subscribe(){return this;}};
+  const client={auth:{onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}}),getSession:async()=>({data:{session:{access_token:'token'}}})},realtime:{setAuth:async()=>{}},rpc:async(name)=>({data:name==='bridge_dashboard_revision'?0:[]}),channel:()=>channel,removeChannel:async()=>{}};
+  const api=await createData(config,{load:async()=>({createClient:()=>client}),onLive:e=>events.push(e)});await api.subscribe();
+  handlers.github_activity({payload:{id:7,project_id:'p',event_type:'workflow_run',title:'Bridge tests'}});
+  assert.equal(events[0].feed,'github');assert.equal(events[0].title,'Bridge tests');await api.close();
+});

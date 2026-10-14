@@ -35,3 +35,5 @@ O SHA implantado nessa validação foi `218cb2fd3a6c74489677517d61c8fe3c0fac1af7
 ## Regra de atualização
 
 Não transforme este arquivo em um log de eventos. Atualize somente quando um marco, arquitetura, bloqueio ou próximo passo material mudar. Inclua data e evidência verificável. Antes de agir em nova sessão, confirme no GitHub/CI/runtime qualquer dado que possa ter envelhecido.
+
+
