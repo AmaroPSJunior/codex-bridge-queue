@@ -27,7 +27,7 @@ Deno.serve(async(req)=>{
  let p:any;try{p=JSON.parse(body)}catch{return new Response("invalid json",{status:400})}
  const repo=String(p.repository?.full_name||"");if(!repo)return new Response("repository required",{status:400});
  const admin=createClient(Deno.env.get("SUPABASE_URL")!,Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
- const {data:project,error:pe}=await admin.from("bridge_projects").select("id").eq("github_repo_full_name",repo).maybeSingle();
+ const {data:project,error:pe}=await admin.from("bridge_projects").select("id").eq("github_repo_full_name",repo).order("created_at",{ascending:false}).limit(1).maybeSingle();
  if(pe)return new Response("project lookup failed",{status:500});if(!project)return new Response("project not registered",{status:202});
  const m=mapped(event,p),run=p.workflow_run||p.workflow_job||{};
  const row={project_id:project.id,source:"github",delivery_id:delivery,event_type:event,action:m.action,stage:m.stage,status:m.status,percent:m.percent,title:String(m.title).slice(0,240),message:String(p.head_commit?.message||p.pull_request?.title||"").slice(0,1000)||null,repo_full_name:repo,ref:p.ref||p.pull_request?.head?.ref||null,sha:p.after||p.pull_request?.head?.sha||run.head_sha||null,run_id:run.id||null,run_url:run.html_url||p.pull_request?.html_url||null,payload:{sender:p.sender?.login||null,number:p.number||null}};
