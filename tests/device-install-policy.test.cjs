@@ -14,7 +14,7 @@ function fixture(t){
  const runner=async spec=>{calls.push(spec);const a=spec.args;let stdout=a.includes('get-state')?'device\n':a.includes('ro.product.model')?model+'\n':a.includes('ro.build.version.sdk')?sdk+'\n':a.includes('install')?'Success\n':a.includes('sha256sum')?installedHash+'  /data/app/example/base.apk\n':'package:/data/app/example/base.apk\n';const code=a.includes('install')?installCode:0;return {code,stdout:JSON.stringify({status:code?'failed':'completed',workspaceReleased:true}),commandResult:{exit_code:code,stdout,stderr:'',error_code:code?'execution':null}};};
  return {home,dir,api:module.exports,runner,calls,options:{env:{HOME:home},taskId:'00000000-0000-4000-8000-000000000091'},setModel:v=>model=v,setSdk:v=>sdk=v,setHash:v=>installedHash=v,setInstallCode:v=>installCode=v};
 }
-const request={action:'apk103.install',target:'10.23.201.181:5555'};
+const request={action:'apk103.install',target:'10.117.236.181:5555'};
 test('only pinned installation at exact target is exempt, never uninstall',()=>{
  assert.equal(real.requiresConsent(request),false);
  assert.equal(real.requiresConsent({...request,target:'10.23.201.182:5555'}),true);
