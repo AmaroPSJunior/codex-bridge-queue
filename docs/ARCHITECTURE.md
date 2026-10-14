@@ -49,7 +49,7 @@ O worker ativo nunca atualiza o próprio checkout. A recuperação prepara o slo
 ## Documentação especializada
 
 - `docs/TECNICO.md`: contratos detalhados e limites.
-- `docs/RECOVERY.md`: recuperação A/B.
+- `docs/RECOVERY.md`: recuperação A/B.\n- `docs/CLI.md`: referência completa dos comandos `bridge`.
 - `docs/WORKER-CONTROL.md`: controle do worker.
 - `docs/MULTIWORKER-RUNTIME.md`: runtime e concorrência.
 - `docs/DEVICE-ACTIONS.md`: ações em dispositivo.
