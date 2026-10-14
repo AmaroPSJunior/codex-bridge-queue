@@ -34,19 +34,19 @@ returns table(id bigint,project_id uuid,source text,delivery_id text,event_type 
 begin
  if not bridge_dashboard_private.bridge_dashboard_allowed() then raise exception 'Dashboard access denied' using errcode='42501'; end if;
  return query select e.id,e.project_id,e.source,e.delivery_id,e.event_type,e.action,e.stage,e.status,e.percent,e.title,e.message,e.repo_full_name,e.ref,e.sha,e.run_id,e.run_url,e.occurred_at,e.created_at from public.bridge_live_events e where e.project_id=p_project_id order by e.occurred_at desc,e.id desc limit greatest(1,least(coalesce(p_limit,100),200));
-end; $$;
+end; $fn$;
 revoke all on function bridge_dashboard_private.bridge_dashboard_live_events(uuid,integer) from public,anon;
 grant execute on function bridge_dashboard_private.bridge_dashboard_live_events(uuid,integer) to authenticated;
 
 create or replace function public.bridge_dashboard_live_events(p_project_id uuid,p_limit integer default 100)
 returns table(id bigint,project_id uuid,source text,delivery_id text,event_type text,action text,stage text,status text,percent integer,title text,message text,repo_full_name text,ref text,sha text,run_id bigint,run_url text,occurred_at timestamptz,created_at timestamptz) language sql stable security invoker set search_path='' as $
  select * from bridge_dashboard_private.bridge_dashboard_live_events(p_project_id,p_limit);
-$$;
+$fn$;
 revoke all on function public.bridge_dashboard_live_events(uuid,integer) from public,anon;
 grant execute on function public.bridge_dashboard_live_events(uuid,integer) to authenticated;
 
 create or replace function bridge_dashboard_private.bridge_live_event_notify()
-returns trigger language plpgsql security definer set search_path='' as $$
+returns trigger language plpgsql security definer set search_path='' as $fn$
 begin
  begin
   perform realtime.send(jsonb_build_object(
@@ -58,7 +58,7 @@ begin
  exception when others then null;
  end;
  return null;
-end; $$;
+end; $fn$;
 revoke all on function bridge_dashboard_private.bridge_live_event_notify() from public,anon,authenticated;
 drop trigger if exists bridge_live_event_changed on public.bridge_live_events;
 create trigger bridge_live_event_changed after insert on public.bridge_live_events for each row execute function bridge_dashboard_private.bridge_live_event_notify();
