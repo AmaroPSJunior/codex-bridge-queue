@@ -15,6 +15,23 @@ ROOT = Path(__file__).resolve().parents[1]
 STATE = Path.home() / ".local" / "share" / "codex-bridge" / "watchdog"
 CONTROL = ROOT / "supabase-state" / "control"
 PRIVATE = Path.home() / ".config" / "codex-bridge"
+def endpoint():
+    url = endpoint()
+    parsed = urllib.parse.urlsplit(url)
+    if (parsed.scheme != "https" or not parsed.hostname or
+        not parsed.hostname.endswith(".supabase.co") or
+        parsed.username or parsed.password or parsed.port or parsed.path or
+        parsed.query or parsed.fragment):
+        raise RuntimeError("invalid_supabase_endpoint")
+    return url.rstrip("/")
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+def open_request(request):
+    return urllib.request.build_opener(NoRedirect).open(request, timeout=10)
+
 def now():
     return datetime.now(timezone.utc).isoformat()
 def emit(event, **data):
@@ -38,10 +55,7 @@ def publish_events(limit=50):
     offset = int(cursor_file.read_text()) if cursor_file.exists() else 0
     if offset < 0 or offset > event_file.stat().st_size:
         raise RuntimeError("watchdog_cursor_invalid")
-    cfg = config()
-    url = os.getenv("CODEX_SUPABASE_URL") or cfg["supabase"]["url"]
-    if not url.startswith("https://"):
-        raise RuntimeError("unsafe_supabase_url")
+    url = endpoint()
     key = os.getenv("CODEX_SUPABASE_SERVICE_ROLE_KEY")
     if not key:
         secret = PRIVATE / "supabase-service-role.key"
@@ -67,7 +81,7 @@ def publish_events(limit=50):
                 data=body,method="POST",headers={"apikey":key,
                   "Authorization":"Bearer "+key,"Content-Type":"application/json",
                   "Prefer":"resolution=ignore-duplicates,return=minimal"})
-            with urllib.request.urlopen(req,timeout=10) as response:
+            with open_request(req) as response:
                 if response.status not in (200,201,204):
                     raise RuntimeError("watchdog_audit_write_failed")
             # Advance only after the server has acknowledged the exact event.
@@ -103,7 +117,7 @@ def supabase_rows(route):
         key = secret.read_text().strip()
     request = urllib.request.Request(url.rstrip("/") + "/rest/v1/" + route,
         headers={"apikey": key, "Authorization": "Bearer " + key})
-    with urllib.request.urlopen(request, timeout=10) as response:
+    with open_request(request) as response:
         return json.load(response)
 def snapshot():
     tasks = supabase_rows("bridge_tasks?status=in.(queued,running)&select=id,status,updated_at,claimed_at&limit=100")
