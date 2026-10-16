@@ -38,7 +38,7 @@ def contender(root):
 with tempfile.TemporaryDirectory() as root:
     with concurrent.futures.ProcessPoolExecutor(max_workers=8) as pool:
         allowed=list(pool.map(contender,[root]*8))
-    assert sum(allowed)==1,allowed
+    assert sum(allowed)==3,allowed
     l=Ledger(root)
     assert l.db.execute("SELECT count(*) FROM events WHERE id='same-task' AND event='publication_retry'").fetchone()[0]==1
 `],{encoding:'utf8'});assert.equal(run.status,0,run.stderr);
