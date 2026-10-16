@@ -106,7 +106,7 @@ def supabase_rows(route):
     with urllib.request.urlopen(request, timeout=10) as response:
         return json.load(response)
 def snapshot():
-    tasks = supabase_rows("bridge_tasks?status=in.(queued,running)&select=id,status,updated_at,claimed_at,activity_seq,last_activity_at&limit=100")
+    tasks = supabase_rows("bridge_tasks?status=in.(queued,running)&select=id,status,updated_at,claimed_at&limit=100")
     # A truncated result cannot justify restarting a worker.
     if len(tasks) >= 100:
         return {"safe": False, "reason": "queue_scan_truncated"}
