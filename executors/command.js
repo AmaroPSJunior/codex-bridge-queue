@@ -28,7 +28,7 @@ function validate(payload){
   git:[['status','--short'],['rev-parse','HEAD'],['log','-1','--oneline']],
   node:[['--version']],
   npm:[['--version']],
-  python3:[['--version'],['watchdog/watchdog.py','--once'],['watchdog/watchdog.py','--publish']]
+  python3:[['--version'],['watchdog/watchdog.py','--once'],['watchdog/watchdog.py','--publish'],['watchdog/watchdog.py','--status']]
  };
  const adbTarget='10.117.236.181:5555';
  const safeAdbArgs=[
