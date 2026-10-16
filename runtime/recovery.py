@@ -10,10 +10,15 @@ def decision(attempt, owner_alive, result, published, released):
 def publication_budget(ledger, task, now=None):
     now=time.time() if now is None else now
     # Durable bounded retries survive maintenance/supervisor reboot.
-    rows=ledger.db.execute("SELECT at FROM events WHERE id=? AND event='publication_retry' ORDER BY at",(task,)).fetchall()
-    if len(rows)>=3:return False
-    if rows and now-rows[-1][0]<min(60*2**len(rows),600):return False
-    ledger.event(task,'publication_retry');return True
+    # Reserve each publication attempt atomically across maintenance processes.
+    # Without BEGIN IMMEDIATE, two readers could both see the same remaining
+    # budget slot and publish concurrently after a supervisor restart.
+    with ledger.transaction():
+        rows=ledger.db.execute("SELECT at FROM events WHERE id=? AND event='publication_retry' ORDER BY at",(task,)).fetchall()
+        if len(rows)>=3:return False
+        if rows and now-rows[-1][0]<min(60*2**len(rows),600):return False
+        ledger.event(task,'publication_retry')
+        return True
 
 def request_inactivity_drain(ledger, attempt, silence, limit=900):
     import uuid

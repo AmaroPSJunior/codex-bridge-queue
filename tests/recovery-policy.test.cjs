@@ -25,3 +25,21 @@ with tempfile.TemporaryDirectory() as root:
  assert l.active()[0]['fence']==fence
 `],{encoding:'utf8'});assert.equal(run.status,0,run.stderr);
 });
+
+test('Publication retry slot is atomically reserved across competing processes',()=>{
+ const run=spawnSync('python3',['-B','-c',`
+import concurrent.futures, tempfile
+from runtime.ledger import Ledger
+from runtime.recovery import publication_budget
+
+def contender(root):
+    return publication_budget(Ledger(root),'same-task',now=10**12)
+
+with tempfile.TemporaryDirectory() as root:
+    with concurrent.futures.ProcessPoolExecutor(max_workers=8) as pool:
+        allowed=list(pool.map(contender,[root]*8))
+    assert sum(allowed)==3,allowed
+    l=Ledger(root)
+    assert l.db.execute("SELECT count(*) FROM events WHERE id='same-task' AND event='publication_retry'").fetchone()[0]==3
+`],{encoding:'utf8'});assert.equal(run.status,0,run.stderr);
+});
