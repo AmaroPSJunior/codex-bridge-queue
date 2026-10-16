@@ -36,6 +36,11 @@ else
     printf '%s ERROR: Supabase supervisor unavailable\n' "$(stamp)"
     exit 1
 fi
+if [ -f "$bridge_dir/watchdog/watchdog.py" ]; then
+    python3 "$bridge_dir/watchdog/watchdog.py" --daemon 9>&- ||
+      { printf '%s ERROR: watchdog observer unavailable\\n' "$(stamp)"; exit 1; }
+    python3 "$bridge_dir/watchdog/watchdog.py" --status 9>&- || true
+fi
 if [ -x "$bridge_dir/remote" ]; then
     "$bridge_dir/remote" start 9>&- || { printf '%s ERROR: remote start failed\n' "$(stamp)"; exit 1; }
     "$bridge_dir/remote" status 9>&- || true
