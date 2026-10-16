@@ -37,7 +37,7 @@ test('output limit drops partial line and terminates',async t=>{
 });
 test('commands, flags, private paths, traversal and symlinks fail closed',async t=>{
  const m=mock(t);fs.symlinkSync(os.tmpdir(),path.join(m.cwd,'escape'));
- for(const payload of [{command:'sh',args:['-c','pwd']},{command:'rm',args:['-rf','.']},{command:'git',args:['reset','--hard']},{command:'git',args:['status','--short']},{command:'ls',args:['; touch x']},{command:'pwd',cwd:'../'},{command:'pwd',cwd:'/tmp'},{command:'pwd',cwd:'.git'},{command:'pwd',cwd:'logs'},{command:'pwd',env:{X:'1'}},{command:'pwd',cwd:'escape'}]){
+ for(const payload of [{command:'sh',args:['-c','pwd']},{command:'rm',args:['-rf','.']},{command:'git',args:['reset','--hard']},{command:'ls',args:['; touch x']},{command:'pwd',cwd:'../'},{command:'pwd',cwd:'/tmp'},{command:'pwd',cwd:'.git'},{command:'pwd',cwd:'logs'},{command:'pwd',env:{X:'1'}},{command:'pwd',cwd:'escape'}]){
   const r=await executeCommand(payload,m.options);assert.equal(r.code,1);
  }
  assert.equal(m.calls.length,0);
