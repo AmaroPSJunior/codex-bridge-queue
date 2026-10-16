@@ -106,6 +106,29 @@ def proc_alive(pid):
         return False
     except PermissionError:
         return True
+def global_worker_pids():
+    found = []
+    for proc in Path("/proc").glob("[0-9]*"):
+        try:
+            args = (proc / "cmdline").read_bytes().split(b"\\0")
+            cwd = Path(os.readlink(proc / "cwd"))
+            if any((cwd / os.fsdecode(a)).resolve().name == "supabase-worker.js"
+                   for a in args[1:] if a):
+                found.append(int(proc.name))
+        except (OSError, ValueError):
+            continue
+    return sorted(found)
+
+def verified_supervisor(pid):
+    if not proc_alive(pid):
+        return False
+    try:
+        args = (Path("/proc") / str(pid) / "cmdline").read_bytes().split(b"\\0")
+        return (str(ROOT / "autostart" / "supabase-launcher.py").encode() in args
+                and b"--supervise" in args)
+    except OSError:
+        return False
+
 def config():
     return json.loads((ROOT / "remote-config.json").read_text())
 def supabase_rows(route):
@@ -133,13 +156,17 @@ def snapshot():
     except (OSError, ValueError):
         supervisor = {}
     pid = supervisor.get("pid")
+    worker_pids = global_worker_pids()
     return {"safe": True, "queued": len(tasks) - len(active), "running": len(active),
-            "supervisor_alive": proc_alive(pid), "supervisor_pid": pid}
+            "worker_alive": bool(worker_pids), "worker_pids": worker_pids,
+            "supervisor_alive": verified_supervisor(pid), "supervisor_pid": pid}
 def decide(snap, confirmations=3):
     if not snap["safe"]:
         return "unknown"
     if snap["running"]:
         return "running_do_not_restart"
+    if snap.get("worker_alive"):
+        return "worker_present_do_not_restart"
     if snap["supervisor_alive"]:
         return "supervisor_alive"
     if not snap["queued"]:
@@ -241,7 +268,7 @@ def main():
         try:
             s = snapshot()
             decision = decide(s, streak + 1)
-            streak = streak + 1 if s["safe"] and s.get("queued") and not s.get("running") and not s.get("supervisor_alive") else 0
+            streak = streak + 1 if s["safe"] and s.get("queued") and not s.get("running") and not s.get("supervisor_alive") and not s.get("worker_alive") else 0
             if decision == "recovery_candidate" and streak >= 3:
                 last_result = check(apply=args.apply, consecutive=streak)
                 streak = 0
