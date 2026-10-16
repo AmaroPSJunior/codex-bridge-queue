@@ -5,6 +5,7 @@ import tempfile
 import json
 import os
 import uuid
+import fcntl
 from unittest.mock import MagicMock
 from unittest.mock import patch
 p = pathlib.Path(__file__).resolve().parents[1] / "watchdog" / "watchdog.py"
@@ -46,6 +47,33 @@ class WatchdogTests(unittest.TestCase):
                 with self.assertRaises(OSError):
                     m.publish_events()
             self.assertFalse((m.STATE/"published.offset").exists())
+    def test_live_worker_from_any_generation_blocks_recovery(self):
+        snap={"safe":True,"running":0,"queued":2,"supervisor_alive":False,
+              "worker_alive":True,"worker_pids":[321]}
+        self.assertEqual(m.decide(snap,9),"worker_present_do_not_restart")
+
+    def test_singleton_lock_rejects_second_process_handle(self):
+        with tempfile.TemporaryDirectory() as td, patch.object(m,"STATE",pathlib.Path(td)):
+            fd=m.singleton_lock()
+            try:
+                with self.assertRaises(BlockingIOError):
+                    duplicate=m.singleton_lock()
+                    os.close(duplicate)
+            finally:
+                os.close(fd)
+
+    def test_invalid_supabase_origins_fail_closed(self):
+        with patch.object(m,"config",return_value={"supabase":{"url":"https://example.supabase.co"}}):
+            for url in ("http://example.supabase.co","https://example.supabase.co.evil.net",
+                        "https://example.supabase.co/extra"):
+                with patch.dict(os.environ,{"CODEX_SUPABASE_URL":url}):
+                    with self.assertRaises(RuntimeError):
+                        m.endpoint()
+
+    def test_dead_watchdog_process_does_not_report_healthy(self):
+        with tempfile.TemporaryDirectory() as td, patch.object(m,"STATE",pathlib.Path(td)):
+            self.assertEqual(m.watchdog_status(),{"alive":False,"pid":None})
+
     def test_healthy_supervisor(self):
         self.assertEqual(m.decide({"safe":True,"running":0,"queued":2,"supervisor_alive":True},10),"supervisor_alive")
 if __name__ == "__main__":
