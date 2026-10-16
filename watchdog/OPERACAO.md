@@ -1,19 +1,35 @@
-# Watchdog: operação e testes
+# Watchdog de supervisão — operação e limites
 
-Implementação inicial na branch de desenvolvimento. **Não está instalada nem ativa no Termux.**
+O watchdog é um **processo independente**, sem Groq, Codex ou tokens. A instalação A/B e o Termux:Boot solicitam seu início em modo **observação**, com trava exclusiva para impedir instâncias duplicadas.
 
-- Monitoramento: verifica fila e supervisor, sem Qwen.
-- Proteção: não reinicia quando existir qualquer tarefa `running`.
-- Falha de conexão / varredura incompleta: estado desconhecido, nenhuma recuperação.
-- Recuperação: após três observações, apenas solicita inicialização pelo launcher com trava global; nunca chama `bridge reboot`.
-- Observações: arquivo local `supabase-state/watchdog/events.jsonl`; envio idempotente separado com `python3 watchdog/watchdog.py --publish`, usando credencial privada existente. A falha de rede não apaga eventos locais.
-- Supabase: a tabela `public.bridge_watchdog_events` foi criada com RLS e acesso restrito ao papel de serviço. Ainda falta validar a gravação no dispositivo Android e ativar o ciclo de publicação sem depender de sessão interativa.
-- O watchdog precisa de processo independente; não há garantia contra o Android encerrar o próprio Termux.
+- Estado durável: `~/.local/share/codex-bridge/watchdog/` (fora dos slots A/B).
+- Auditoria: `events.jsonl` local, com publicação incremental idempotente em `public.bridge_watchdog_events`. O cursor só avança após confirmação do Supabase.
+- Rede indisponível: conserva eventos locais e tenta publicá-los posteriormente.
+- Banco: migração `watchdog_audit_baseline_20261016` aplicada, tabela com RLS e acesso reservado à credencial de serviço.
+- Segurança: supervisão não reinicia nenhum processo quando há tarefa em execução, qualquer worker visível, verificação incompleta ou supervisor autenticado ativo.
+- Inicialização automática: `--daemon` lança `--serve` **sem** `--apply`. O daemon apenas observa e registra eventos.
+- A recuperação automática ainda **não** está habilitada em produção. Deve ser validada com condições de corrida, timeouts e limites de tentativas antes de ser ligada.
+- Android pode interromper todos os processos Termux; um watchdog dentro do mesmo app não consegue garantir execução caso o aplicativo inteiro seja encerrado pelo sistema.
 
-Testes locais: `python3 -m unittest discover -s tests -p 'test_watchdog.py'`.
-Teste seguro de leitura: `python3 watchdog/watchdog.py --once`.
-Não habilitar `--apply` em produção antes de testes no ambiente Termux e revisão de eventos.
+## Diagnóstico
 
-**Testes obrigatórios antes da ativação:** tarefa longa sem logs, heartbeat atrasado, worker ausente, supervisor morto, Supabase indisponível, falha da auditoria, corrida entre claim e recuperação, três falhas consecutivas, limite de reinícios e recuperação após reboot Android.
+```sh
+python3 watchdog/watchdog.py --once
+python3 watchdog/watchdog.py --status
+python3 watchdog/watchdog.py --publish
+```
 
-Rollback: interromper processo watchdog; não é necessário alterar o worker. Manter auditoria para investigação. Não apagar histórico.
+Esses três diagnósticos também são permitidos como tarefas determinísticas no Code Bridge, sem IA intermediária. `--daemon`, `--serve` e `--apply` **não** são expostos ao executor remoto de comandos.
+
+## Testes
+
+```sh
+npm test
+python3 -B tests/test_watchdog.py
+```
+
+Além do CI, verificar no Termux real: daemon único após reboot, resultados de `--once`, envio `--publish`, eventos no Supabase, persistência entre troca A/B, falha de rede e retorno, e ausência de duplicação de workers.
+
+## Recuperação e rollback
+
+Parar o daemon interrompe apenas o monitoramento. Não remover journals/credenciais/locks para forçar uma recuperação. Uma falha de health check do worker não autoriza rollback se existir tarefa ou execução remota pendente.
