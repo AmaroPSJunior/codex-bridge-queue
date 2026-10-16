@@ -40,6 +40,6 @@ with tempfile.TemporaryDirectory() as root:
         allowed=list(pool.map(contender,[root]*8))
     assert sum(allowed)==3,allowed
     l=Ledger(root)
-    assert l.db.execute("SELECT count(*) FROM events WHERE id='same-task' AND event='publication_retry'").fetchone()[0]==1
+    assert l.db.execute("SELECT count(*) FROM events WHERE id='same-task' AND event='publication_retry'").fetchone()[0]==3
 `],{encoding:'utf8'});assert.equal(run.status,0,run.stderr);
 });
