@@ -104,7 +104,17 @@ def recover():
             # Fail closed: preserve evidence and do not start another generation here.
             write_json(STATE/"journal.json",{"phase":"health_failed","failed_sha":sha,"previous":str(before) if before else None,"target":str(dst),"global_worker_pids":global_workers,"slot_worker_pids":slot_workers,"reported_worker_pids":reported,"at":time.time()})
             raise RuntimeError("global_health_check_failed")
-        write_json(STATE/"journal.json",{"phase":"healthy","active":str(dst),"sha":sha,"worker_pids":global_workers,"at":time.time()})
+        watcher=dst/"watchdog/watchdog.py"
+        watcher_pid=None
+        if watcher.is_file():
+            run([sys.executable,str(watcher),"--daemon"],dst,timeout=10)
+            time.sleep(1)
+            observer=json.loads(run([sys.executable,str(watcher),"--status"],dst,timeout=10).stdout)
+            if not observer.get("alive"):
+                write_json(STATE/"journal.json",{"phase":"watchdog_failed","active":str(dst),"sha":sha,"worker_pids":global_workers,"at":time.time()})
+                raise RuntimeError("watchdog_start_unconfirmed")
+            watcher_pid=observer["pid"]
+        write_json(STATE/"journal.json",{"phase":"healthy","active":str(dst),"sha":sha,"worker_pids":global_workers,"watchdog_pid":watcher_pid,"at":time.time()})
         status()
     finally:
         os.close(fd)

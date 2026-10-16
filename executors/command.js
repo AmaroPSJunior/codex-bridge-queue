@@ -28,7 +28,7 @@ function validate(payload){
   git:[['status','--short'],['rev-parse','HEAD'],['log','-1','--oneline']],
   node:[['--version']],
   npm:[['--version']],
-  python3:[['--version']]
+  python3:[['--version'],['watchdog/watchdog.py','--once'],['watchdog/watchdog.py','--publish'],['watchdog/watchdog.py','--status']]
  };
  const adbTarget='10.117.236.181:5555';
  const safeAdbArgs=[
@@ -85,7 +85,7 @@ function executeValidated(payload,{cwd,env=process.env,signal,progress,nonInterr
   const executable=bins.map(bin=>path.join(bin,spec.command)).find(file=>{try{return fs.statSync(file).isFile();}catch{return false;}});
   const args=spec.args;
   if(!executable){reason='unavailable';void finish(null,true);return;}
-  try{child=spawnFn(executable,args,{cwd:dir,shell:false,stdio:['ignore','pipe','pipe'],env:{PATH:bins.join(path.delimiter),LANG:'C.UTF-8',...(env.TMPDIR?{TMPDIR:env.TMPDIR}:{}),...(['adb','gh'].includes(spec.command)&&env.HOME?{HOME:env.HOME}:{}),...(spec.command==='gh'&&env.GH_TOKEN?{GH_TOKEN:env.GH_TOKEN}:{})}});}catch{reason='unavailable';void finish(null,true);return;}
+  try{child=spawnFn(executable,args,{cwd:dir,shell:false,stdio:['ignore','pipe','pipe'],env:{PATH:bins.join(path.delimiter),LANG:'C.UTF-8',...(env.TMPDIR?{TMPDIR:env.TMPDIR}:{}),...(['adb','gh','python3'].includes(spec.command)&&env.HOME?{HOME:env.HOME}:{}),...(spec.command==='gh'&&env.GH_TOKEN?{GH_TOKEN:env.GH_TOKEN}:{})}});}catch{reason='unavailable';void finish(null,true);return;}
   for(const stream of ['stdout','stderr'])child[stream].on('data',chunk=>{
    if(settled||reason)return;size+=Buffer.byteLength(chunk);
    if(size>MAX_OUTPUT){pending.stdout=pending.stderr='';emit('stderr','[saída excedeu limite; restante omitido]');stop('output_limit');return;}

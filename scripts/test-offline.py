@@ -26,6 +26,7 @@ with tempfile.TemporaryDirectory(prefix='bridge-offline-home-') as home:
         [sys.executable, '-B', 'tests/test_boot_path_repair.py'],
         [sys.executable, '-B', 'tests/test_multi_device_contract.py'],
         [sys.executable, '-B', 'tests/test_provision_device.py'],
+        [sys.executable, '-B', 'tests/test_watchdog.py'],
     ]
     for index, command in enumerate(commands, 1):
         label = ' '.join(str(part) for part in command)

@@ -20,7 +20,7 @@ O comando executa uma recuperação fail-closed:
 
 - não usa `kill -KILL`, `git reset --hard` nem `git clean`;
 - o slot novo só é promovido após `npm test` e verificações de sintaxe;
-- falha de health check aciona rollback pelo `bridge-recover`;
+- falha de health check é registrada e bloqueia certificação; **não há rollback automático** quando a nova geração pode ter iniciado trabalho, para evitar duplicação;
 - uma recuperação não deve criar uma segunda geração enquanto outra estiver ativa;
 - o controlador permanece fora do checkout ativo.
 
@@ -39,3 +39,7 @@ O JSON informa o slot ativo, PIDs detectados e o último journal de recuperaçã
 ## Princípio operacional
 
 Atualização, recuperação e execução normal são responsabilidades separadas. O worker nunca deve reparar o próprio checkout em uso. O caminho A/B prepara e valida uma geração inativa antes de promovê-la.
+
+## Watchdog independente
+
+Após validar o slot e certificar o worker único, o recovery inicia o watchdog em modo observação e confirma seu processo. O watchdog mantém auditoria fora dos slots A/B, publica eventos idempotentes no Supabase e não aplica recuperação destrutiva automaticamente. Consultar `watchdog/OPERACAO.md`.
