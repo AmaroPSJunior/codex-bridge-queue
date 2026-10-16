@@ -22,7 +22,14 @@ function validate(payload){
  if(payload&&Object.hasOwn(payload,'action'))return require('./device-actions').validate(payload);
  if(!payload||Array.isArray(payload)||typeof payload!=='object'||Object.keys(payload).some(k=>!['command','args','cwd','timeout_ms'].includes(k)))throw Error('Payload inválido.');
  const {command,args=[],cwd='.',timeout_ms=10000}=payload;
- const permitted={pwd:[[]],ls:[[],['-la']]};
+ const permitted={
+  pwd:[[]],
+  ls:[[],['-la']],
+  git:[['status','--short'],['rev-parse','HEAD'],['log','-1','--oneline']],
+  node:[['--version']],
+  npm:[['--version']],
+  python3:[['--version']]
+ };
  const adbTarget='10.117.236.181:5555';
  const safeAdbArgs=[
   ['version'],['devices','-l'],['connect',adbTarget],
