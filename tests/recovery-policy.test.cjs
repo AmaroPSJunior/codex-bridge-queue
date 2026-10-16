@@ -28,18 +28,26 @@ with tempfile.TemporaryDirectory() as root:
 
 test('Publication retry slot is atomically reserved across competing processes',()=>{
  const run=spawnSync('python3',['-B','-c',`
-import concurrent.futures, tempfile
+import subprocess, sys, tempfile
+from runtime.ledger import Ledger
+
+# Spawn independent interpreters instead of ProcessPoolExecutor from -c:
+# Python 3.14's forkserver cannot import __main__.contender.
+worker = """import sys
 from runtime.ledger import Ledger
 from runtime.recovery import publication_budget
-
-def contender(root):
-    return publication_budget(Ledger(root),'same-task',now=10**12)
-
+print(int(publication_budget(Ledger(sys.argv[1]), 'same-task', now=10**12)))
+"""
 with tempfile.TemporaryDirectory() as root:
-    with concurrent.futures.ProcessPoolExecutor(max_workers=8) as pool:
-        allowed=list(pool.map(contender,[root]*8))
-    assert sum(allowed)==3,allowed
-    l=Ledger(root)
-    assert l.db.execute("SELECT count(*) FROM events WHERE id='same-task' AND event='publication_retry'").fetchone()[0]==3
+    procs = [subprocess.Popen([sys.executable, '-B', '-c', worker, root],
+              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+             for _ in range(8)]
+    outputs = [p.communicate(timeout=30) for p in procs]
+    for p, (stdout, stderr) in zip(procs, outputs):
+        assert p.returncode == 0, stderr
+    allowed = [int(stdout.strip()) for stdout, _ in outputs]
+    assert sum(allowed) == 3, allowed
+    l = Ledger(root)
+    assert l.db.execute("SELECT count(*) FROM events WHERE id='same-task' AND event='publication_retry'").fetchone()[0] == 3
 `],{encoding:'utf8'});assert.equal(run.status,0,run.stderr);
 });
