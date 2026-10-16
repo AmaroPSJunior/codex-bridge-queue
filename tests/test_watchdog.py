@@ -30,7 +30,7 @@ class WatchdogTests(unittest.TestCase):
             response.__enter__.return_value.status=201
             with patch.object(m,"config",return_value={"supabase":{"url":"https://example.supabase.co"}}),\
                  patch.dict(os.environ,{"CODEX_SUPABASE_SERVICE_ROLE_KEY":"fake-test-key"}),\
-                 patch.object(m.urllib.request,"urlopen",return_value=response) as mocked:
+                 patch.object(m,"open_request",return_value=response) as mocked:
                 self.assertEqual(m.publish_events(),1)
                 self.assertEqual(m.publish_events(),0)
                 payload=json.loads(mocked.call_args.args[0].data)
@@ -42,7 +42,7 @@ class WatchdogTests(unittest.TestCase):
             (m.STATE/"events.jsonl").write_text(json.dumps({"id":str(uuid.uuid4()),"at":"2026-10-16T00:00:00+00:00","event":"observation"})+"\n")
             with patch.object(m,"config",return_value={"supabase":{"url":"https://example.supabase.co"}}),\
                  patch.dict(os.environ,{"CODEX_SUPABASE_SERVICE_ROLE_KEY":"fake-test-key"}),\
-                 patch.object(m.urllib.request,"urlopen",side_effect=OSError("offline")):
+                 patch.object(m,"open_request",side_effect=OSError("offline")):
                 with self.assertRaises(OSError):
                     m.publish_events()
             self.assertFalse((m.STATE/"published.offset").exists())
