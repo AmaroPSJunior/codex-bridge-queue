@@ -25,11 +25,11 @@ class WatchdogTests(unittest.TestCase):
     def test_event_upload_ack_updates_cursor_and_is_idempotent(self):
         with tempfile.TemporaryDirectory() as td, patch.object(m,"STATE",pathlib.Path(td)):
             event={"id":str(uuid.uuid4()),"at":"2026-10-16T00:00:00+00:00","event":"watchdog_check","verdict":"idle","safe":True}
-            (m.STATE/"events.jsonl").write_text(json.dumps(event)+"\\n")
+            (m.STATE/"events.jsonl").write_text(json.dumps(event)+"\n")
             response=MagicMock()
             response.__enter__.return_value.status=201
-            with patch.object(m,"config",return_value={"supabase":{"url":"https://example.supabase.co"}}),\\
-                 patch.dict(os.environ,{"CODEX_SUPABASE_SERVICE_ROLE_KEY":"fake-test-key"}),\\
+            with patch.object(m,"config",return_value={"supabase":{"url":"https://example.supabase.co"}}),\
+                 patch.dict(os.environ,{"CODEX_SUPABASE_SERVICE_ROLE_KEY":"fake-test-key"}),\
                  patch.object(m.urllib.request,"urlopen",return_value=response) as mocked:
                 self.assertEqual(m.publish_events(),1)
                 self.assertEqual(m.publish_events(),0)
@@ -39,9 +39,9 @@ class WatchdogTests(unittest.TestCase):
                 self.assertEqual(mocked.call_count,1)
     def test_failed_upload_preserves_unsent_events(self):
         with tempfile.TemporaryDirectory() as td, patch.object(m,"STATE",pathlib.Path(td)):
-            (m.STATE/"events.jsonl").write_text(json.dumps({"id":str(uuid.uuid4()),"at":"2026-10-16T00:00:00+00:00","event":"observation"})+"\\n")
-            with patch.object(m,"config",return_value={"supabase":{"url":"https://example.supabase.co"}}),\\
-                 patch.dict(os.environ,{"CODEX_SUPABASE_SERVICE_ROLE_KEY":"fake-test-key"}),\\
+            (m.STATE/"events.jsonl").write_text(json.dumps({"id":str(uuid.uuid4()),"at":"2026-10-16T00:00:00+00:00","event":"observation"})+"\n")
+            with patch.object(m,"config",return_value={"supabase":{"url":"https://example.supabase.co"}}),\
+                 patch.dict(os.environ,{"CODEX_SUPABASE_SERVICE_ROLE_KEY":"fake-test-key"}),\
                  patch.object(m.urllib.request,"urlopen",side_effect=OSError("offline")):
                 with self.assertRaises(OSError):
                     m.publish_events()
