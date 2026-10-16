@@ -110,7 +110,7 @@ def global_worker_pids():
     found = []
     for proc in Path("/proc").glob("[0-9]*"):
         try:
-            args = (proc / "cmdline").read_bytes().split(b"\\0")
+            args = (proc / "cmdline").read_bytes().split(b"\0")
             cwd = Path(os.readlink(proc / "cwd"))
             if any((cwd / os.fsdecode(a)).resolve().name == "supabase-worker.js"
                    for a in args[1:] if a):
@@ -123,7 +123,7 @@ def verified_supervisor(pid):
     if not proc_alive(pid):
         return False
     try:
-        args = (Path("/proc") / str(pid) / "cmdline").read_bytes().split(b"\\0")
+        args = (Path("/proc") / str(pid) / "cmdline").read_bytes().split(b"\0")
         return (str(ROOT / "autostart" / "supabase-launcher.py").encode() in args
                 and b"--supervise" in args)
     except OSError:
@@ -211,7 +211,7 @@ def watchdog_status():
     try:
         info = json.loads((STATE / "watchdog.pid.json").read_text())
         pid = info.get("pid")
-        args = (Path("/proc") / str(pid) / "cmdline").read_bytes().split(b"\\0")
+        args = (Path("/proc") / str(pid) / "cmdline").read_bytes().split(b"\0")
         script = str(Path(__file__).resolve()).encode()
         healthy = proc_alive(pid) and script in args and b"--serve" in args
         return {"alive": healthy, "pid": pid if healthy else None}
