@@ -107,8 +107,7 @@ def proc_alive(pid):
 def config():
     return json.loads((ROOT / "remote-config.json").read_text())
 def supabase_rows(route):
-    cfg = config()
-    url = os.getenv("CODEX_SUPABASE_URL") or cfg["supabase"]["url"]
+    url = endpoint()
     key = os.getenv("CODEX_SUPABASE_SERVICE_ROLE_KEY")
     if not key:
         secret = PRIVATE / "supabase-service-role.key"
@@ -183,6 +182,7 @@ def main():
     if args.interval < 10:
         parser.error("interval must be >= 10 seconds")
     streak = 0
+    last_result = None
     while True:
         # Count failures only after distinct checks; never act on a single stale snapshot.
         try:
@@ -190,15 +190,21 @@ def main():
             decision = decide(s, streak + 1)
             streak = streak + 1 if s["safe"] and s.get("queued") and not s.get("running") and not s.get("supervisor_alive") else 0
             if decision == "recovery_candidate" and streak >= 3:
-                check(apply=args.apply, consecutive=streak)
+                last_result = check(apply=args.apply, consecutive=streak)
                 streak = 0
             else:
-                emit("watchdog_observation", verdict=decide(s, streak), **s)
+                last_result = emit("watchdog_observation", verdict=decide(s, streak), **s)
         except Exception as exc:
             streak = 0
-            emit("watchdog_check_failed", error_type=type(exc).__name__)
+            last_result = emit("watchdog_check_failed", error_type=type(exc).__name__)
         if args.once:
+            print(json.dumps({k:v for k,v in (last_result or {}).items() if k not in ("id",)}))
             break
+        try:
+            publish_events()
+        except Exception:
+            # Keep local events intact; network failures are retried on the next interval.
+            pass
         time.sleep(args.interval)
 if __name__ == "__main__":
     main()
