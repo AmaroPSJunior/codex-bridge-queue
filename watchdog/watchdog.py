@@ -16,7 +16,8 @@ STATE = Path.home() / ".local" / "share" / "codex-bridge" / "watchdog"
 CONTROL = ROOT / "supabase-state" / "control"
 PRIVATE = Path.home() / ".config" / "codex-bridge"
 def endpoint():
-    url = endpoint()
+    cfg = config()
+    url = os.getenv("CODEX_SUPABASE_URL") or cfg["supabase"]["url"]
     parsed = urllib.parse.urlsplit(url)
     if (parsed.scheme != "https" or not parsed.hostname or
         not parsed.hostname.endswith(".supabase.co") or
