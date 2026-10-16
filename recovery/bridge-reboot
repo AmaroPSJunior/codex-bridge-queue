@@ -27,7 +27,7 @@ done
 # catches boot/legacy supervisors that recreate a worker after the first TERM.
 stable=0
 for _ in $(seq 1 45); do
-  if [ -z "$(pids '[.]termux/boot/20-codex-bridge')" ] && [ -z "$(pids '[c]ontrol-bootstrap\.py')" ] && [ -z "$(pids '[s]upabase-launcher\.py')" ] && [ -z "$(pids '[s]upabase-worker\.js')" ]; then
+  if [ -z "$(pids '[w]atchdog/watchdog.py --serve')" ] && [ -z "$(pids '[.]termux/boot/20-codex-bridge')" ] && [ -z "$(pids '[c]ontrol-bootstrap\.py')" ] && [ -z "$(pids '[s]upabase-launcher\.py')" ] && [ -z "$(pids '[s]upabase-worker\.js')" ]; then
     stable=$((stable + 1))
     [ "$stable" -ge 3 ] && break
   else
