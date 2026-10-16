@@ -70,6 +70,15 @@ class WatchdogTests(unittest.TestCase):
                     with self.assertRaises(RuntimeError):
                         m.endpoint()
 
+    def test_watchdog_status_parses_proc_nul_delimiters(self):
+        with tempfile.TemporaryDirectory() as td, patch.object(m,"STATE",pathlib.Path(td)):
+            (m.STATE/"watchdog.pid.json").write_text(json.dumps({"pid":12345}))
+            actual_script=str(p.resolve()).encode()
+            cmdline=b"python3\\0"+actual_script+b"\\0--serve\\0"
+            with patch.object(m,"proc_alive",return_value=True), \\
+                 patch.object(pathlib.Path,"read_bytes",return_value=cmdline):
+                self.assertEqual(m.watchdog_status(),{"alive":True,"pid":12345})
+
     def test_dead_watchdog_process_does_not_report_healthy(self):
         with tempfile.TemporaryDirectory() as td, patch.object(m,"STATE",pathlib.Path(td)):
             self.assertEqual(m.watchdog_status(),{"alive":False,"pid":None})
