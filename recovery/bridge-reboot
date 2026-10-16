@@ -17,7 +17,7 @@ for pid in $(pids '[.]termux/boot/20-codex-bridge'); do
 done
 # Stop every known supervisor generation first. Killing only its worker lets the
 # supervisor immediately recreate it and races the recovery controller.
-for pattern in '[c]ontrol-bootstrap\.py' '[s]upabase-launcher\.py' '[s]upabase-worker\.js'; do
+for pattern in '[w]watchdog/watchdog.py --serve' '[c]ontrol-bootstrap\.py' '[s]upabase-launcher\.py' '[s]upabase-worker\.js'; do
   for pid in $(pids "$pattern"); do
     kill -TERM "$pid" 2>/dev/null || true
   done
@@ -25,14 +25,21 @@ done
 
 # Require a stable zero-worker/zero-supervisor window before recovery. This
 # catches boot/legacy supervisors that recreate a worker after the first TERM.
+# Avoid deeply nested command substitutions: verify that every generation exited.
+all_stopped() {
+  for pattern in '[w]atchdog/watchdog.py --serve' '[.]termux/boot/20-codex-bridge' '[c]ontrol-bootstrap\.py' '[s]upabase-launcher\.py' '[s]upabase-worker\.js'; do
+    if [ -n "$(pids "$pattern")" ]; then return 1; fi
+  done
+  return 0
+}
 stable=0
 for _ in $(seq 1 45); do
-  if [ -z "$(pids '[w]atchdog/watchdog.py --serve')" ] && [ -z "$(pids '[.]termux/boot/20-codex-bridge')" ] && [ -z "$(pids '[c]ontrol-bootstrap\.py')" ] && [ -z "$(pids '[s]upabase-launcher\.py')" ] && [ -z "$(pids '[s]upabase-worker\.js')" ]; then
+  if all_stopped; then
     stable=$((stable + 1))
     [ "$stable" -ge 3 ] && break
   else
     stable=0
-    for pattern in '[c]ontrol-bootstrap\.py' '[s]upabase-launcher\.py' '[s]upabase-worker\.js'; do
+    for pattern in '[w]atchdog/watchdog.py --serve' '[c]ontrol-bootstrap\.py' '[s]upabase-launcher\.py' '[s]upabase-worker\.js'; do
       for pid in $(pids "$pattern"); do kill -TERM "$pid" 2>/dev/null || true; done
     done
   fi
