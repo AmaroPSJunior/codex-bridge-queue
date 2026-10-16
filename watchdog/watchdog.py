@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Fail-closed Codex Bridge watchdog. Standard library only; no AI/tokens."""
 import argparse
+import fcntl
+import sys
 import json
 import os
 from pathlib import Path
@@ -169,16 +171,67 @@ def check(apply=False, consecutive=3):
                     **after)
     except Exception as exc:
         return emit("check_failed", error_type=type(exc).__name__)
+def singleton_lock():
+    STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if STATE.is_symlink() or STATE.stat().st_mode & 0o077:
+        raise RuntimeError("unsafe_watchdog_state_directory")
+    fd = os.open(STATE / "watchdog.lock",
+                 os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    return fd
+
+def watchdog_status():
+    try:
+        info = json.loads((STATE / "watchdog.pid.json").read_text())
+        pid = info.get("pid")
+        args = (Path("/proc") / str(pid) / "cmdline").read_bytes().split(b"\\0")
+        script = str(Path(__file__).resolve()).encode()
+        healthy = proc_alive(pid) and script in args and b"--serve" in args
+        return {"alive": healthy, "pid": pid if healthy else None}
+    except (OSError, ValueError, TypeError):
+        return {"alive": False, "pid": None}
+
+def detach():
+    p = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--serve"],
+            cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, start_new_session=True, close_fds=True)
+    time.sleep(0.25)
+    if p.poll() is not None and p.returncode != 0:
+        raise RuntimeError("watchdog_daemon_failed")
+    return {"launch_requested": True, "pid": p.pid}
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true", help="Allow safe supervisor bootstrap")
     parser.add_argument("--once", action="store_true", help="Run one inspection")
     parser.add_argument("--interval", type=int, default=30)
     parser.add_argument("--publish", action="store_true", help="Upload journalled events to Supabase")
+    parser.add_argument("--daemon", action="store_true", help="Launch independent observer")
+    parser.add_argument("--serve", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--status", action="store_true", help="Query running observer")
     args = parser.parse_args()
     if args.publish:
         print(json.dumps({"published":publish_events()}))
         return
+    if args.status:
+        print(json.dumps(watchdog_status()))
+        return
+    if args.daemon:
+        if args.apply or args.once or args.serve:
+            parser.error("observer daemon does not permit automatic recovery")
+        print(json.dumps(detach()))
+        return
+    lock_fd = None
+    if args.serve:
+        try:
+            lock_fd = singleton_lock()
+        except BlockingIOError:
+            return
+        record = STATE / "watchdog.pid.json"
+        tmp = record.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"pid":os.getpid(),"started_at":now()}))
+        os.chmod(tmp,0o600)
+        os.replace(tmp, record)
     if args.interval < 10:
         parser.error("interval must be >= 10 seconds")
     streak = 0
