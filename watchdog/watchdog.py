@@ -12,13 +12,15 @@ import uuid
 from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parents[1]
-STATE = ROOT / "supabase-state" / "watchdog"
+STATE = Path.home() / ".local" / "share" / "codex-bridge" / "watchdog"
 CONTROL = ROOT / "supabase-state" / "control"
 PRIVATE = Path.home() / ".config" / "codex-bridge"
 def now():
     return datetime.now(timezone.utc).isoformat()
 def emit(event, **data):
     STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if STATE.is_symlink() or STATE.stat().st_mode & 0o077:
+        raise RuntimeError("unsafe_watchdog_state_directory")
     payload = {"id": str(uuid.uuid4()), "at": now(), "event": event, **data}
     with (STATE / "events.jsonl").open("a", encoding="utf8") as log:
         log.write(json.dumps(payload, ensure_ascii=False) + "\n")
@@ -27,6 +29,8 @@ def emit(event, **data):
     return payload
 def publish_events(limit=50):
     """Best-effort upload of locally journalled events (no remote actions)."""
+    if STATE.is_symlink() or (STATE.exists() and STATE.stat().st_mode & 0o077):
+        raise RuntimeError("unsafe_watchdog_state_directory")
     event_file = STATE / "events.jsonl"
     cursor_file = STATE / "published.offset"
     if not event_file.is_file():
