@@ -74,7 +74,7 @@ class WatchdogTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td, patch.object(m,"STATE",pathlib.Path(td)):
             (m.STATE/"watchdog.pid.json").write_text(json.dumps({"pid":12345}))
             actual_script=str(p.resolve()).encode()
-            cmdline=b"python3\\0"+actual_script+b"\\0--serve\\0"
+            cmdline=b"python3\0"+actual_script+b"\0--serve\0"
             with patch.object(m,"proc_alive",return_value=True), \
                  patch.object(pathlib.Path,"read_bytes",return_value=cmdline):
                 self.assertEqual(m.watchdog_status(),{"alive":True,"pid":12345})
