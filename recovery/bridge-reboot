@@ -13,7 +13,7 @@ printf '[1/4] Encerrando boot legado, supervisores e workers...\n'
 # A legacy Termux:Boot process may still be sleeping and can relaunch the old
 # checkout after the first drain. Stop any in-flight boot entrypoint first.
 for pid in $(pids '[.]termux/boot/20-codex-bridge'); do
-  [ "$pid" = "$" ] || kill -TERM "$pid" 2>/dev/null || true
+  [ "$pid" = "$$" ] || kill -TERM "$pid" 2>/dev/null || true
 done
 # Stop every known supervisor generation first. Killing only its worker lets the
 # supervisor immediately recreate it and races the recovery controller.
