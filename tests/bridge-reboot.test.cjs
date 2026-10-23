@@ -17,4 +17,6 @@ assert.match(src,/bridge-recover\.py" install/,'must refresh independent recover
 assert.match(src,/RECOVER" recover/,'must delegate A\/B validation and promotion to bridge-recover');
 assert.match(src,/RECOVER" status/,'must print final status');
 assert.doesNotMatch(src,/kill -KILL|reset --hard|git clean/,'must not use destructive recovery shortcuts');
+assert.match(src,/\[ "\$pid" = "\$\$" \]/,'must compare against the current shell PID');
+assert.doesNotMatch(src,/\[ "\$pid" = "\$" \]/,'must not use a literal dollar sign as PID');
 console.log('bridge-reboot tests passed');
