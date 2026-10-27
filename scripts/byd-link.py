@@ -72,7 +72,7 @@ def local_networks():
     return sorted(networks, key=str)
 
 
-def udp_candidates(seconds=3):
+def udp_candidates(seconds=5):
     nonce = secrets.token_hex(16)
     request = json.dumps({'service': 'byd-link-v1', 'nonce': nonce}).encode()
     found = set()
@@ -135,6 +135,10 @@ def discover(config, fresh=False):
         if authenticated(config, cached):
             return cached
     candidates = udp_candidates()
+    # Wi-Fi/ARP can still be settling after a reboot. Retry only discovery,
+    # never a user command or a Codex job.
+    if not candidates:
+        candidates = udp_candidates()
     candidates.extend(ip for ip in adb_candidates(config) if ip not in candidates)
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
         results = pool.map(lambda ip: (ip, authenticated(config, ip)), candidates)
