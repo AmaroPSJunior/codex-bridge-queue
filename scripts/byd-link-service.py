@@ -4,7 +4,6 @@ import fcntl
 import json
 import os
 from pathlib import Path
-import signal
 import socket
 import subprocess
 import sys
@@ -56,8 +55,11 @@ def main():
                 now = time.monotonic()
                 if now >= next_check:
                     if not ssh_alive():
-                        result = subprocess.run(['sshd'], env=env, capture_output=True, timeout=8)
-                        print(time.strftime('%Y-%m-%dT%H:%M:%S'), 'SSHD_START', result.returncode, flush=True)
+                        try:
+                            result = subprocess.run(['sshd'], env=env, capture_output=True, timeout=8)
+                            print(time.strftime('%Y-%m-%dT%H:%M:%S'), 'SSHD_START', result.returncode, flush=True)
+                        except (OSError, subprocess.TimeoutExpired):
+                            print('SSHD_START_FAILED; retry in 10 seconds', flush=True)
                     next_check = now + 10
                 try:
                     data, addr = sock.recvfrom(512)
@@ -67,7 +69,7 @@ def main():
                             last_reply.clear()
                         last_reply[addr[0]] = now
                         sock.sendto(response, addr)
-                except socket.timeout:
+                except OSError:
                     pass
 
 
