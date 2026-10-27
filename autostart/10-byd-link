@@ -1,0 +1,9 @@
+#!/data/data/com.termux/files/usr/bin/sh
+# Independent SSH recovery; does not invoke the Code Bridge queue supervisors.
+PATH=/data/data/com.termux/files/usr/bin:/system/bin
+export PATH
+unset LD_LIBRARY_PATH
+umask 077
+mkdir -p "$HOME/.local/state/byd-link" || exit 1
+# Keep the boot execution registered with Termux's foreground service.
+exec python3 "$HOME/.local/share/byd-link/service.py" >> "$HOME/.local/state/byd-link/service.log" 2>&1
