@@ -47,4 +47,8 @@ Para desfazer, use os primeiros backups da sessão para restaurar `.ssh/config` 
 - Segunda tarefa impedida pela trava, código 75.
 - Termux:Boot 0.8.1 do F-Droid instalado; certificado SHA-256 igual ao Termux instalado (`228fb2cfe90831c1499ec3ccaf61e96e8e1ce70766b9474672ce427334d41c42`), aplicativo iniciado e habilitado.
 
-Uma mudança DHCP real e o boot completo da central ainda precisam ser observados; o teste com cache incorreto não é uma mudança real de IP. Nenhuma função do veículo foi acionada.
+Uma mudança DHCP real ainda precisa ser observada; o teste com cache incorreto não é uma mudança real de IP. Nenhuma função do veículo foi acionada.
+
+### Teste após reinicialização real
+
+O identificador de boot mudou de `9b5454f2-e5a8-4082-af4e-b80e4217fcd2` para `4b1cfe75-ea19-4ee0-a22b-d540456e1c95`. O ADB voltou no mesmo IP `10.51.86.181`, mas o SSH recusou conexão e o serviço de descoberta não estava em execução. Portanto, **o autostart após boot falhou neste teste**. Termux:Boot continua instalado, habilitado, com assinatura compatível e permissão RECEIVE_BOOT_COMPLETED; isso não comprovou execução dos scripts. Também não foi encontrado processo Tasker nem job pendente do Termux:Boot. A causa ainda não foi estabelecida: é necessário inspecionar os logs privados do Termux após restaurar o acesso autorizado. Não enviar broadcasts de boot protegidos, ampliar permissões do shell ou usar a interface do terminal para contornar RUN_COMMAND.
