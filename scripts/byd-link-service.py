@@ -39,9 +39,20 @@ def main():
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
-            print('ALREADY_RUNNING')
-            return 0
+            # A simultaneous status probe holds the lock only briefly. Give it
+            # time to release before deciding a persistent service already exists.
+            if sys.argv[1:] != ['status']:
+                time.sleep(0.25)
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    print('ALREADY_RUNNING')
+                    return 0
+            else:
+                print('ALREADY_RUNNING')
+                return 0
         if sys.argv[1:] == ['status']:
+            fcntl.flock(lock, fcntl.LOCK_UN)
             print('SERVICE_STOPPED')
             return 1
         (STATE / 'service.pid').write_text(str(os.getpid()) + '\n')
