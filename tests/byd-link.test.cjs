@@ -12,7 +12,7 @@ def load(name, file):
 c=load('client','scripts/byd-link.py')
 s=load('service','scripts/byd-link-service.py')
 assert c.private_ip('10.51.86.181')
-for ip in ('127.0.0.1','0.0.0.0','8.8.8.8','::1','-oProxyCommand=bad'):
+for ip in ('127.0.0.1','0.0.0.0','8.8.8.8','192.0.2.1','100.64.0.1','::1','-oProxyCommand=bad'):
  assert not c.private_ip(ip), ip
 for data in (b'null',b'[]',b'{}',b'bad',b'\\xff',b'{"service":"byd-link-v1","nonce":2}'):
  assert s.reply(data) is None
