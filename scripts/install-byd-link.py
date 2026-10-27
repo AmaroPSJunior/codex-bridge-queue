@@ -83,7 +83,9 @@ print('CENTRAL_INSTALLED backup='+str(b))
             '-o', 'HostKeyAlias=[10.48.199.181]:8022', 'byd-central',
             'python3 -c ' + shlex.quote(code)]
     subprocess.run(args, env=ENV, input=json.dumps(files), text=True, check=True)
-    subprocess.run(args[:-1] + ['sh "$HOME/.termux/boot/10-byd-link"'], env=ENV, check=True)
+    subprocess.run(args[:-1] + [
+        'nohup sh "$HOME/.termux/boot/10-byd-link" >/dev/null 2>&1 </dev/null &'
+    ], env=ENV, check=True)
 
 
 if __name__ == '__main__':
