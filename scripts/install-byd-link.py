@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Explicit local transport installer. No queue credentials or worker state are changed."""
 import datetime
+import ipaddress
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import shutil
 import subprocess
@@ -13,7 +15,26 @@ SOURCE = Path(__file__).resolve().parent.parent
 ENV = {k: v for k, v in os.environ.items() if k != 'LD_LIBRARY_PATH'}
 
 
-def install_phone():
+def validate_network_config(initial_ip, host_key_alias):
+    try:
+        address = ipaddress.IPv4Address(initial_ip)
+    except ipaddress.AddressValueError as error:
+        raise ValueError('Initial address must be a private IPv4 address') from error
+    if not any(address in ipaddress.IPv4Network(net) for net in
+               ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16')):
+        raise ValueError('Initial address must be a private IPv4 address')
+    if not re.fullmatch(r'[A-Za-z0-9_.:\[\]-]{1,255}', host_key_alias):
+        raise ValueError('Invalid SSH host key alias')
+
+
+def validate_config(initial_ip, adb_serial, host_key_alias):
+    validate_network_config(initial_ip, host_key_alias)
+    if not re.fullmatch(r'[A-Za-z0-9._:-]{1,128}', adb_serial):
+        raise ValueError('Invalid ADB serial')
+
+
+def install_phone(initial_ip, adb_serial, host_key_alias):
+    validate_config(initial_ip, adb_serial, host_key_alias)
     home = Path.home()
     stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f')
     backup = home / '.local/state/byd-link/backups' / stamp
@@ -24,8 +45,8 @@ def install_phone():
     for n, target in enumerate(targets):
         if target.exists():
             shutil.copy2(target, backup / (str(n) + '-' + target.name))
-    config = {'initial_ip': '10.51.86.181', 'adb_serial': '808ca340',
-              'host_key_alias': '[10.48.199.181]:8022'}
+    config = {'initial_ip': initial_ip, 'adb_serial': adb_serial,
+              'host_key_alias': host_key_alias}
     directory = home / '.config/byd-link'
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     file = directory / 'config.json'
@@ -42,7 +63,7 @@ def install_phone():
     old = ssh.read_text()
     # A first-match block makes the pinned key independent of DHCP changes.
     block = ('# BEGIN BYD-LINK\nHost byd-central\n'
-             '    HostKeyAlias [10.48.199.181]:8022\n'
+             f'    HostKeyAlias {host_key_alias}\n'
              '    ProxyCommand /data/data/com.termux/files/usr/bin/python3 '
              + str(directory / 'central.py') + ' proxy\n# END BYD-LINK\n')
     if '# BEGIN BYD-LINK\n' in old:
@@ -62,7 +83,8 @@ def install_phone():
     print('PHONE_INSTALLED backup=' + str(backup))
 
 
-def install_central():
+def install_central(initial_ip, host_key_alias):
+    validate_network_config(initial_ip, host_key_alias)
     files = {'service.py': (SOURCE / 'scripts/byd-link-service.py').read_text(),
              '10-byd-link': (SOURCE / 'autostart/10-byd-link').read_text()}
     code = '''
@@ -79,8 +101,8 @@ for name,target in [('service.py',h/'.local/share/byd-link/service.py'),('10-byd
  target.write_text(files[name]); target.chmod(0o700)
 print('CENTRAL_INSTALLED backup='+str(b))
 '''
-    args = ['ssh', '-o', 'ProxyCommand=none', '-o', 'HostName=10.51.86.181',
-            '-o', 'HostKeyAlias=[10.48.199.181]:8022', 'byd-central',
+    args = ['ssh', '-o', 'ProxyCommand=none', '-o', f'HostName={initial_ip}',
+            '-o', f'HostKeyAlias={host_key_alias}', 'byd-central',
             'python3 -c ' + shlex.quote(code)]
     subprocess.run(args, env=ENV, input=json.dumps(files), text=True, check=True)
     subprocess.run(args[:-1] + [
@@ -90,9 +112,21 @@ print('CENTRAL_INSTALLED backup='+str(b))
 
 if __name__ == '__main__':
     os.umask(0o077)
-    if sys.argv[1:] == ['phone']:
-        install_phone()
-    elif sys.argv[1:] == ['central']:
-        install_central()
-    else:
-        sys.exit('Usage: install-byd-link.py phone|central')
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    subparsers = parser.add_subparsers(dest='target', required=True)
+    phone = subparsers.add_parser('phone', help='install the phone-side client')
+    phone.add_argument('--initial-ip', required=True)
+    phone.add_argument('--adb-serial', required=True)
+    phone.add_argument('--host-key-alias', required=True)
+    central = subparsers.add_parser('central', help='install the central-side service')
+    central.add_argument('--initial-ip', required=True)
+    central.add_argument('--host-key-alias', required=True)
+    options = parser.parse_args()
+    try:
+        if options.target == 'phone':
+            install_phone(options.initial_ip, options.adb_serial, options.host_key_alias)
+        else:
+            install_central(options.initial_ip, options.host_key_alias)
+    except ValueError as error:
+        parser.error(str(error))

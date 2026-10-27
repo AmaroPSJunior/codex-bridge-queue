@@ -11,13 +11,21 @@ def load(name, file):
  m=importlib.util.module_from_spec(s); s.loader.exec_module(m); return m
 c=load('client','scripts/byd-link.py')
 s=load('service','scripts/byd-link-service.py')
-assert c.private_ip('10.51.86.181')
+i=load('installer','scripts/install-byd-link.py')
+assert c.private_ip('10.1.2.3')
 for ip in ('127.0.0.1','0.0.0.0','8.8.8.8','192.0.2.1','100.64.0.1','::1','-oProxyCommand=bad'):
  assert not c.private_ip(ip), ip
 for data in (b'null',b'[]',b'{}',b'bad',b'\\xff',b'{"service":"byd-link-v1","nonce":2}'):
  assert s.reply(data) is None
 req={'service':'byd-link-v1','nonce':'a'*32}
 assert json.loads(s.reply(json.dumps(req).encode())) == req
+i.validate_config('10.1.2.3','SERIAL123','[10.1.2.3]:8022')
+for values in (('8.8.8.8','SERIAL123','host'),
+               ('10.1.2.3','SERIAL123\\nProxyCommand bad','host'),
+               ('10.1.2.3','SERIAL123','host\\nProxyCommand bad')):
+ try: i.validate_config(*values)
+ except ValueError: pass
+ else: raise AssertionError(values)
 for p in ('~/../secret','~/a//b','relative'):
  try: c.codex_command(['--cwd',p,'hello'])
  except ValueError: pass

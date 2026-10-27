@@ -35,7 +35,24 @@ Nenhum worker novo é criado. O worker Supabase existente no celular é preserva
 
 ## Instalação e recuperação de arquivos
 
-`scripts/install-byd-link.py central` instala o serviço pelo SSH existente; `phone` instala o cliente, o alias e o ProxyCommand. O instalador registra backups antes de substituir arquivos, em `~/.local/state/byd-link/backups/<timestamp>`, nos dois aparelhos. A configuração inicial é específica desta instalação: usuário e chave vêm do bloco SSH existente, IP inicial `10.51.86.181`, serial ADB `808ca340` e alias da chave `[10.48.199.181]:8022`. Não altera o checkout `~/codex-bridge`, credenciais ou locks existentes.
+O instalador requer os parâmetros locais da conexão. No celular:
+
+```sh
+python3 scripts/install-byd-link.py phone \
+  --initial-ip <IP_PRIVADO> \
+  --adb-serial <SERIAL_ADB> \
+  --host-key-alias <ALIAS_DA_CHAVE>
+```
+
+Na central:
+
+```sh
+python3 scripts/install-byd-link.py central \
+  --initial-ip <IP_PRIVADO> \
+  --host-key-alias <ALIAS_DA_CHAVE>
+```
+
+O bloco SSH existente fornece usuário e chave. O instalador valida os valores, registra backups antes de substituir arquivos em `~/.local/state/byd-link/backups/<timestamp>` nos dois aparelhos e não altera o checkout `~/codex-bridge`, credenciais ou locks existentes.
 
 Para desfazer, use os primeiros backups da sessão para restaurar `.ssh/config` e `.bashrc` no celular; os nomes numerados correspondem à ordem `config SSH`, `.bashrc`, executável `central`, configuração JSON e cliente Python. Na central, o instalador guarda o autostart anterior, a entrada SSH e o serviço, quando existem. Remova apenas a nova entrada `10-byd-link` e interrompa somente o processo cujo PID está em `~/.local/state/byd-link/service.pid`, conferindo sua linha de comando. Não remova locks de workers nem pare supervisores Code Bridge. O arquivo de lock do novo serviço pode permanecer: a trava é do kernel e é liberada quando o processo termina.
 
@@ -47,23 +64,23 @@ Para desfazer, use os primeiros backups da sessão para restaurar `.ssh/config` 
 - ADB desconectado e reconectado automaticamente, verificando serial.
 - Listener SSH encerrado de forma controlada e recriado pelo watchdog.
 - Segunda tarefa impedida pela trava, código 75.
-- Termux:Boot 0.8.1 do F-Droid instalado; certificado SHA-256 igual ao Termux instalado (`228fb2cfe90831c1499ec3ccaf61e96e8e1ce70766b9474672ce427334d41c42`), aplicativo iniciado e habilitado.
+- Termux:Boot instalado, com assinatura compatível com Termux, iniciado e habilitado.
 
 Uma mudança DHCP real ainda precisa ser observada; o teste com cache incorreto não é uma mudança real de IP. Nenhuma função do veículo foi acionada.
 
 ### Teste após reinicialização real
 
-O identificador de boot mudou de `9b5454f2-e5a8-4082-af4e-b80e4217fcd2` para `4b1cfe75-ea19-4ee0-a22b-d540456e1c95`. O ADB voltou no mesmo IP `10.51.86.181`, mas o SSH recusou conexão e o serviço de descoberta não estava em execução. Portanto, **o autostart após boot falhou neste teste**. Termux:Boot continua instalado, habilitado, com assinatura compatível e permissão RECEIVE_BOOT_COMPLETED; isso não comprovou execução dos scripts. Também não foi encontrado processo Tasker nem job pendente do Termux:Boot. A causa ainda não foi estabelecida: é necessário inspecionar os logs privados do Termux após restaurar o acesso autorizado. Não enviar broadcasts de boot protegidos, ampliar permissões do shell ou usar a interface do terminal para contornar RUN_COMMAND.
+Após uma reinicialização, o ADB voltou, mas SSH e o serviço de descoberta não estavam ativos. Portanto, **o autostart falhou nesse teste**. Termux:Boot estava instalado e habilitado, mas isso não comprovava a execução dos scripts. A causa ainda não estava estabelecida; a inspeção dos logs privados do Termux era necessária. Não enviar broadcasts de boot protegidos, ampliar permissões do shell ou usar a interface do terminal para contornar RUN_COMMAND.
 
 ### Correção após o teste de boot
 
-Após o usuário restaurar o SSH com `sshd`, a inspeção confirmou os arquivos preservados e ausência de execução dos scripts no boot. Na interface oficial `com.byd.appstartmanagement`, a tela **Desativar AutoStart** mostrava **Termux:Boot = LIG**. Essa opção é um bloqueio de inicialização. Seu estado original foi salvo em `/data/data/com.termux/files/usr/tmp/byd-startup-before-termuxboot.xml` no celular, e somente essa opção foi alterada para **DESL** pela interface. A nova leitura após fechar e reabrir a tela confirmou persistência; os demais itens visíveis mantiveram seus valores. Termux e Termux:Boot compartilham o UID 10141, usado pelo gerenciador para essa preferência.
+Após restaurar SSH, a inspeção confirmou que os scripts não tinham executado no boot. A interface oficial de gerenciamento de inicialização mostrava Termux:Boot bloqueado. O estado anterior foi preservado localmente e somente essa opção foi desbloqueada pela interface; uma nova leitura confirmou que a alteração persistiu. Nenhuma permissão do shell, credencial ou worker foi alterada.
 
 O script agora mantém o processo do serviço acompanhado pelo Termux. O instalador usa `nohup` somente na partida manual via SSH. A consulta de status libera a trava imediatamente, e a partida aguarda brevemente caso tenha coincidido com uma consulta; isso evita que um diagnóstico interrompa a inicialização por uma disputa transitória de trava. Os backups anteriores continuam preservados. A comprovação do novo boot está registrada abaixo; remover o bloqueio, sozinho, não seria prova de autostart. Não foram alteradas permissões do shell, credenciais, workers da fila ou arquivos do sistema da central.
 
 ### Autostart comprovado no boot seguinte
 
-O boot `2211fcc5-bf57-42df-89e9-ca1d689690e8` iniciou o serviço e o SSH automaticamente, sem abrir o Termux nem executar partida manual. O watchdog ficou com PID 8032 e o listener SSH com PID 8094. O log registrou `2026-10-27T02:01:34 SSHD_START 0`. O serviço Android do Termux estava em primeiro plano, iniciado pelas entradas de Termux:Boot.
+Uma reinicialização posterior iniciou o serviço e o SSH automaticamente, sem abrir o Termux nem executar partida manual. O log confirmou a inicialização do SSH, e o serviço Android do Termux ficou em primeiro plano, iniciado pelas entradas de Termux:Boot.
 
 O início levou aproximadamente cinco minutos: o `BOOT_COMPLETED` foi enfileirado às 01:56:57 e sua entrega ficou aguardando o receptor do Google Play Services. Enquanto isso, o receptor do Termux:Boot aparecia como pendente na posição 90. A entrega depois avançou naturalmente; nenhum aplicativo foi encerrado, nenhum broadcast protegido foi enviado e nenhuma partida do Termux foi acionada pela automação de diagnóstico. Portanto, ausência de SSH nos primeiros minutos não basta para classificar este autostart como falho.
 

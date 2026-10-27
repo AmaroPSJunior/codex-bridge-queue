@@ -13,6 +13,8 @@
     "smoke:github": "python3 scripts/smoke.py github",
     "smoke:supabase": "python3 scripts/smoke.py supabase",
     "tasks": "node scripts/tasks.cjs",
+    "byd:codex": "node scripts/byd-codex.cjs",
+    "test:byd": "node --test tests/byd-codex.test.cjs tests/byd-link.test.cjs",
     "test:postgres": "python3 -B tests/test_postgres.py --disposable-local-database",
     "gemini:check": "node integrations/gemini/setup.cjs",
     "gemini:run": "python3 integrations/gemini/run-gemini.py",
