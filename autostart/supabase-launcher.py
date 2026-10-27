@@ -20,6 +20,10 @@ SECRET = PRIVATE / 'supabase-service-role.key'
 GROQ_SECRET = PRIVATE / 'groq_api_key'
 LOGS = ROOT / 'logs'
 WORKER = ROOT / 'supabase-worker.js'
+# One lock shared by legacy and every A/B checkout generation. A checkout-local
+# lock cannot prevent an older supervisor from starting a second worker.
+GLOBAL_RUNTIME = Path.home() / '.local' / 'share' / 'codex-bridge' / 'runtime'
+GLOBAL_LOCK = GLOBAL_RUNTIME / 'supabase-worker.lock'
 
 
 def workers():
@@ -47,7 +51,7 @@ def workers():
 def validate_lock(fd):
     """The inherited FD must still refer to the one stable launcher lock inode."""
     info = os.fstat(fd)
-    current = (LOGS / 'supabase-worker.lock').lstat()
+    current = GLOBAL_LOCK.lstat()
     if (not stat.S_ISREG(info.st_mode) or not stat.S_ISREG(current.st_mode)
             or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600
             or info.st_nlink != 1 or (info.st_dev, info.st_ino) != (current.st_dev, current.st_ino)):
@@ -57,7 +61,13 @@ def validate_lock(fd):
 
 def open_lock():
     # Never unlink a stale lock file: that would let two holders lock two inodes.
-    fd = os.open(LOGS / 'supabase-worker.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    GLOBAL_RUNTIME.mkdir(parents=True, exist_ok=True, mode=0o700)
+    GLOBAL_RUNTIME.chmod(0o700)
+    runtime_info = GLOBAL_RUNTIME.lstat()
+    if (not stat.S_ISDIR(runtime_info.st_mode) or runtime_info.st_uid != os.getuid()
+            or stat.S_IMODE(runtime_info.st_mode) != 0o700):
+        raise RuntimeError('Unsafe global runtime directory')
+    fd = os.open(GLOBAL_LOCK, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
     try:
         validate_lock(fd)
         return fd

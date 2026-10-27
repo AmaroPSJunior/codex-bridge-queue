@@ -1,0 +1,290 @@
+#!/usr/bin/env python3
+"""Fail-closed Codex Bridge watchdog. Standard library only; no AI/tokens."""
+import argparse
+import fcntl
+import sys
+import json
+import os
+from pathlib import Path
+import subprocess
+import time
+import urllib.parse
+import urllib.request
+import uuid
+from datetime import datetime, timezone
+
+ROOT = Path(__file__).resolve().parents[1]
+STATE = Path.home() / ".local" / "share" / "codex-bridge" / "watchdog"
+CONTROL = ROOT / "supabase-state" / "control"
+PRIVATE = Path.home() / ".config" / "codex-bridge"
+def endpoint():
+    cfg = config()
+    url = os.getenv("CODEX_SUPABASE_URL") or cfg["supabase"]["url"]
+    parsed = urllib.parse.urlsplit(url)
+    if (parsed.scheme != "https" or not parsed.hostname or
+        not parsed.hostname.endswith(".supabase.co") or
+        parsed.username or parsed.password or parsed.port or parsed.path or
+        parsed.query or parsed.fragment):
+        raise RuntimeError("invalid_supabase_endpoint")
+    return url.rstrip("/")
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+def open_request(request):
+    return urllib.request.build_opener(NoRedirect).open(request, timeout=10)
+
+def now():
+    return datetime.now(timezone.utc).isoformat()
+def emit(event, **data):
+    STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if STATE.is_symlink() or STATE.stat().st_mode & 0o077:
+        raise RuntimeError("unsafe_watchdog_state_directory")
+    payload = {"id": str(uuid.uuid4()), "at": now(), "event": event, **data}
+    with (STATE / "events.jsonl").open("a", encoding="utf8") as log:
+        log.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        log.flush()
+        os.fsync(log.fileno())
+    return payload
+def publish_events(limit=50):
+    """Best-effort upload of locally journalled events (no remote actions)."""
+    if STATE.is_symlink() or (STATE.exists() and STATE.stat().st_mode & 0o077):
+        raise RuntimeError("unsafe_watchdog_state_directory")
+    event_file = STATE / "events.jsonl"
+    cursor_file = STATE / "published.offset"
+    if not event_file.is_file():
+        return 0
+    offset = int(cursor_file.read_text()) if cursor_file.exists() else 0
+    if offset < 0 or offset > event_file.stat().st_size:
+        raise RuntimeError("watchdog_cursor_invalid")
+    url = endpoint()
+    key = os.getenv("CODEX_SUPABASE_SERVICE_ROLE_KEY")
+    if not key:
+        secret = PRIVATE / "supabase-service-role.key"
+        st = secret.lstat()
+        if not secret.is_file() or secret.is_symlink() or st.st_mode & 0o077:
+            raise RuntimeError("Unsafe private credential")
+        key = secret.read_text().strip()
+    sent = 0
+    with event_file.open("rb") as stream:
+        stream.seek(offset)
+        while sent < limit:
+            raw = stream.readline()
+            if not raw:
+                break
+            event = json.loads(raw)
+            record = {"id":event["id"],"event_at":event["at"],
+                      "event_type":event["event"],"verdict":event.get("verdict"),
+                      "reason":event.get("reason"),
+                      "evidence":{k:v for k,v in event.items() if k not in
+                                  ("id","at","event","verdict","reason")}}
+            body = json.dumps(record).encode("utf8")
+            req = urllib.request.Request(url.rstrip("/")+"/rest/v1/bridge_watchdog_events",
+                data=body,method="POST",headers={"apikey":key,
+                  "Authorization":"Bearer "+key,"Content-Type":"application/json",
+                  "Prefer":"resolution=ignore-duplicates,return=minimal"})
+            with open_request(req) as response:
+                if response.status not in (200,201,204):
+                    raise RuntimeError("watchdog_audit_write_failed")
+            # Advance only after the server has acknowledged the exact event.
+            new_offset = stream.tell()
+            tmp = cursor_file.with_suffix(".tmp")
+            tmp.write_text(str(new_offset))
+            os.chmod(tmp,0o600)
+            os.replace(tmp,cursor_file)
+            sent += 1
+    return sent
+
+def proc_alive(pid):
+    if type(pid) is not int or pid < 2:
+        return False
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+def global_worker_pids():
+    found = []
+    for proc in Path("/proc").glob("[0-9]*"):
+        try:
+            args = (proc / "cmdline").read_bytes().split(b"\0")
+            cwd = Path(os.readlink(proc / "cwd"))
+            if any((cwd / os.fsdecode(a)).resolve().name == "supabase-worker.js"
+                   for a in args[1:] if a):
+                found.append(int(proc.name))
+        except (OSError, ValueError):
+            continue
+    return sorted(found)
+
+def verified_supervisor(pid):
+    if not proc_alive(pid):
+        return False
+    try:
+        args = (Path("/proc") / str(pid) / "cmdline").read_bytes().split(b"\0")
+        return (str(ROOT / "autostart" / "supabase-launcher.py").encode() in args
+                and b"--supervise" in args)
+    except OSError:
+        return False
+
+def config():
+    return json.loads((ROOT / "remote-config.json").read_text())
+def supabase_rows(route):
+    url = endpoint()
+    key = os.getenv("CODEX_SUPABASE_SERVICE_ROLE_KEY")
+    if not key:
+        secret = PRIVATE / "supabase-service-role.key"
+        st = secret.lstat()
+        if not secret.is_file() or secret.is_symlink() or st.st_mode & 0o077:
+            raise RuntimeError("Unsafe private credential")
+        key = secret.read_text().strip()
+    request = urllib.request.Request(url.rstrip("/") + "/rest/v1/" + route,
+        headers={"apikey": key, "Authorization": "Bearer " + key})
+    with open_request(request) as response:
+        return json.load(response)
+def snapshot():
+    tasks = supabase_rows("bridge_tasks?status=in.(queued,running)&select=id,status,updated_at,claimed_at&limit=100")
+    # A truncated result cannot justify restarting a worker.
+    if len(tasks) >= 100:
+        return {"safe": False, "reason": "queue_scan_truncated"}
+    active = [t for t in tasks if t["status"] == "running"]
+    supervisor_path = CONTROL / "supervisor.json"
+    try:
+        supervisor = json.loads(supervisor_path.read_text())
+    except (OSError, ValueError):
+        supervisor = {}
+    pid = supervisor.get("pid")
+    worker_pids = global_worker_pids()
+    return {"safe": True, "queued": len(tasks) - len(active), "running": len(active),
+            "worker_alive": bool(worker_pids), "worker_pids": worker_pids,
+            "supervisor_alive": verified_supervisor(pid), "supervisor_pid": pid}
+def decide(snap, confirmations=3):
+    if not snap["safe"]:
+        return "unknown"
+    if snap["running"]:
+        return "running_do_not_restart"
+    if snap.get("worker_alive"):
+        return "worker_present_do_not_restart"
+    if snap["supervisor_alive"]:
+        return "supervisor_alive"
+    if not snap["queued"]:
+        return "idle"
+    if confirmations < 3:
+        return "suspect"
+    return "recovery_candidate"
+def check(apply=False, consecutive=3):
+    try:
+        snap = snapshot()
+        verdict = decide(snap, consecutive)
+        event = emit("watchdog_check", verdict=verdict, **snap)
+        if verdict != "recovery_candidate":
+            return event
+        if not apply:
+            return emit("recovery_skipped", reason="dry_run", **snap)
+        # Never run bridge reboot automatically: it kills workers and changes the checkout.
+        # Use the existing singleton launcher, which takes a global lock.
+        launcher = ROOT / "autostart" / "supabase-launcher.py"
+        if not launcher.is_file():
+            return emit("recovery_failed", reason="launcher_missing")
+        emit("recovery_started", action="start_supervisor")
+        result = subprocess.run(["python3", str(launcher)], cwd=ROOT,
+                                timeout=30, capture_output=True, text=True)
+        emit("recovery_attempt", returncode=result.returncode)
+        time.sleep(3)
+        after = snapshot()
+        return emit("recovery_verified" if after.get("supervisor_alive") else "recovery_unconfirmed",
+                    **after)
+    except Exception as exc:
+        return emit("check_failed", error_type=type(exc).__name__)
+def singleton_lock():
+    STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if STATE.is_symlink() or STATE.stat().st_mode & 0o077:
+        raise RuntimeError("unsafe_watchdog_state_directory")
+    fd = os.open(STATE / "watchdog.lock",
+                 os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    return fd
+
+def watchdog_status():
+    try:
+        info = json.loads((STATE / "watchdog.pid.json").read_text())
+        pid = info.get("pid")
+        args = (Path("/proc") / str(pid) / "cmdline").read_bytes().split(b"\0")
+        script = str(Path(__file__).resolve()).encode()
+        healthy = proc_alive(pid) and script in args and b"--serve" in args
+        return {"alive": healthy, "pid": pid if healthy else None}
+    except (OSError, ValueError, TypeError):
+        return {"alive": False, "pid": None}
+
+def detach():
+    p = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--serve"],
+            cwd=ROOT, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, start_new_session=True, close_fds=True)
+    time.sleep(0.25)
+    if p.poll() is not None and p.returncode != 0:
+        raise RuntimeError("watchdog_daemon_failed")
+    return {"launch_requested": True, "pid": p.pid}
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--apply", action="store_true", help="Allow safe supervisor bootstrap")
+    parser.add_argument("--once", action="store_true", help="Run one inspection")
+    parser.add_argument("--interval", type=int, default=30)
+    parser.add_argument("--publish", action="store_true", help="Upload journalled events to Supabase")
+    parser.add_argument("--daemon", action="store_true", help="Launch independent observer")
+    parser.add_argument("--serve", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--status", action="store_true", help="Query running observer")
+    args = parser.parse_args()
+    if args.publish:
+        print(json.dumps({"published":publish_events()}))
+        return
+    if args.status:
+        print(json.dumps(watchdog_status()))
+        return
+    if args.daemon:
+        if args.apply or args.once or args.serve:
+            parser.error("observer daemon does not permit automatic recovery")
+        print(json.dumps(detach()))
+        return
+    lock_fd = None
+    if args.serve:
+        try:
+            lock_fd = singleton_lock()
+        except BlockingIOError:
+            return
+        record = STATE / "watchdog.pid.json"
+        tmp = record.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"pid":os.getpid(),"started_at":now()}))
+        os.chmod(tmp,0o600)
+        os.replace(tmp, record)
+    if args.interval < 10:
+        parser.error("interval must be >= 10 seconds")
+    streak = 0
+    last_result = None
+    while True:
+        # Count failures only after distinct checks; never act on a single stale snapshot.
+        try:
+            s = snapshot()
+            decision = decide(s, streak + 1)
+            streak = streak + 1 if s["safe"] and s.get("queued") and not s.get("running") and not s.get("supervisor_alive") and not s.get("worker_alive") else 0
+            if decision == "recovery_candidate" and streak >= 3:
+                last_result = check(apply=args.apply, consecutive=streak)
+                streak = 0
+            else:
+                last_result = emit("watchdog_observation", verdict=decide(s, streak), **s)
+        except Exception as exc:
+            streak = 0
+            last_result = emit("watchdog_check_failed", error_type=type(exc).__name__)
+        if args.once:
+            print(json.dumps({k:v for k,v in (last_result or {}).items() if k not in ("id",)}))
+            break
+        try:
+            publish_events()
+        except Exception:
+            # Keep local events intact; network failures are retried on the next interval.
+            pass
+        time.sleep(args.interval)
+if __name__ == "__main__":
+    main()

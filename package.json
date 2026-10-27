@@ -22,11 +22,14 @@
     "dashboard:check": "node scripts/dashboard-build.cjs --check",
     "dashboard:build": "node scripts/dashboard-build.cjs",
     "dashboard:dev": "python3 -m http.server 4173 --bind 127.0.0.1 --directory dashboard",
-    "test:dashboard": "node --test tests/dashboard.test.cjs"
+    "test:dashboard": "node --test tests/dashboard.test.cjs",
+    "test:reboot": "node tests/bridge-reboot.test.cjs"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
-  "dependencies": {"ws": "^8.22.0"}
+  "dependencies": {
+    "ws": "^8.22.0"
+  }
 }

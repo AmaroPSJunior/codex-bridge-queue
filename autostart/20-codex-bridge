@@ -1,37 +1,48 @@
 #!/data/data/com.termux/files/usr/bin/sh
-# Termux:Boot entrypoint; also safe to execute manually.
+# Canonical Termux:Boot entrypoint for the A/B recovery layout.
 PATH=/data/data/com.termux/files/usr/bin:/system/bin
 export PATH
 umask 077
-bridge_dir=/data/data/com.termux/files/home/codex-bridge
-mkdir -p "$bridge_dir/logs" || exit 1
-exec >> "$bridge_dir/logs/autostart.log" 2>&1
+base="$HOME/.local/share/codex-bridge"
+current="$base/current"
+runtime="$base/runtime"
+mkdir -p "$runtime" || exit 1
+chmod 700 "$runtime" 2>/dev/null || true
+exec >> "$runtime/autostart.log" 2>&1
 stamp() { date -Iseconds; }
 printf '%s autostart requested pid=%s\n' "$(stamp)" "$$"
-exec 9> "$bridge_dir/autostart.lock" || exit 1
+exec 9> "$runtime/autostart.lock" || exit 1
 if ! flock -n 9; then
     printf '%s autostart already in progress; skipped\n' "$(stamp)"
     exit 0
 fi
-# Bounded delay; the remote worker retries network errors itself.
 sleep 20
 if timeout 15 termux-wake-lock 9>&-; then
     printf '%s wake lock requested\n' "$(stamp)"
 else
     printf '%s WARNING: wake lock unavailable; check Android battery settings\n' "$(stamp)"
 fi
+[ -L "$current" ] || { printf '%s ERROR: active A/B slot unavailable\n' "$(stamp)"; exit 1; }
+bridge_dir="$(readlink -f "$current")"
+case "$bridge_dir" in
+  "$base"/slots/A|"$base"/slots/B) ;;
+  *) printf '%s ERROR: active slot refused: %s\n' "$(stamp)" "$bridge_dir"; exit 1 ;;
+esac
+[ -f "$bridge_dir/autostart/supabase-launcher.py" ] || exit 1
 cd "$bridge_dir" || exit 1
-# The Supabase supervisor owns a separate singleton lock and returns immediately.
-if python3 "$bridge_dir/autostart/supabase-launcher.py" 9>&-; then
-    printf '%s Supabase supervisor requested\n' "$(stamp)"
+if CODEX_BRIDGE_DEVICE_ROUTING_V1=1 python3 "$bridge_dir/autostart/supabase-launcher.py" 9>&-; then
+    printf '%s Supabase supervisor requested from %s\n' "$(stamp)" "$bridge_dir"
 else
-    printf '%s WARNING: Supabase supervisor unavailable\n' "$(stamp)"
-fi
-# Close the boot lock in descendants. remote start has its own worker lock.
-if ./remote start 9>&-; then
-    ./remote status 9>&-
-    printf '%s autostart finished\n' "$(stamp)"
-else
-    printf '%s ERROR: remote start failed\n' "$(stamp)"
+    printf '%s ERROR: Supabase supervisor unavailable\n' "$(stamp)"
     exit 1
 fi
+if [ -f "$bridge_dir/watchdog/watchdog.py" ]; then
+    python3 "$bridge_dir/watchdog/watchdog.py" --daemon 9>&- ||
+      { printf '%s ERROR: watchdog observer unavailable\\n' "$(stamp)"; exit 1; }
+    python3 "$bridge_dir/watchdog/watchdog.py" --status 9>&- || true
+fi
+if [ -x "$bridge_dir/remote" ]; then
+    "$bridge_dir/remote" start 9>&- || { printf '%s ERROR: remote start failed\n' "$(stamp)"; exit 1; }
+    "$bridge_dir/remote" status 9>&- || true
+fi
+printf '%s autostart finished\n' "$(stamp)"

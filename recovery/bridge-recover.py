@@ -58,6 +58,8 @@ def prepare(dst):
     if dst.exists(): shutil.rmtree(dst)
     dst.parent.mkdir(parents=True,exist_ok=True)
     run(["git","clone","--depth=1","--branch","main",REPO,str(dst)],timeout=300)
+    # Runtime dependencies belong to the prepared slot; validate and promote only a runnable checkout.
+    run(["npm","ci","--omit=dev","--ignore-scripts"],dst,timeout=300)
     validate(dst)
     return run(["git","rev-parse","HEAD"],dst).stdout.strip()
 
@@ -93,13 +95,26 @@ def recover():
         if p.returncode: raise RuntimeError("launcher_failed")
         time.sleep(3)
         data=json.loads(run([sys.executable,str(dst/"autostart/supabase-launcher.py"),"--status"],dst).stdout)
-        if len(data.get("worker_pids",[]))!=1:
-            if before:
-                switch(before)
-                subprocess.run([sys.executable,str(before/"autostart/supabase-launcher.py")],cwd=before,env=env,timeout=30)
-            write_json(STATE/"journal.json",{"phase":"rolled_back","failed_sha":sha,"previous":str(before) if before else None,"at":time.time()})
-            raise RuntimeError("health_check_failed")
-        write_json(STATE/"journal.json",{"phase":"healthy","active":str(dst),"sha":sha,"worker_pids":data["worker_pids"],"at":time.time()})
+        slot_workers=workers(dst)
+        global_workers=workers()
+        reported=sorted(data.get("worker_pids",[]))
+        healthy=(len(global_workers)==1 and global_workers==slot_workers and global_workers==reported)
+        if not healthy:
+            # Never certify a checkout-local view while another generation is alive.
+            # Fail closed: preserve evidence and do not start another generation here.
+            write_json(STATE/"journal.json",{"phase":"health_failed","failed_sha":sha,"previous":str(before) if before else None,"target":str(dst),"global_worker_pids":global_workers,"slot_worker_pids":slot_workers,"reported_worker_pids":reported,"at":time.time()})
+            raise RuntimeError("global_health_check_failed")
+        watcher=dst/"watchdog/watchdog.py"
+        watcher_pid=None
+        if watcher.is_file():
+            run([sys.executable,str(watcher),"--daemon"],dst,timeout=10)
+            time.sleep(1)
+            observer=json.loads(run([sys.executable,str(watcher),"--status"],dst,timeout=10).stdout)
+            if not observer.get("alive"):
+                write_json(STATE/"journal.json",{"phase":"watchdog_failed","active":str(dst),"sha":sha,"worker_pids":global_workers,"at":time.time()})
+                raise RuntimeError("watchdog_start_unconfirmed")
+            watcher_pid=observer["pid"]
+        write_json(STATE/"journal.json",{"phase":"healthy","active":str(dst),"sha":sha,"worker_pids":global_workers,"watchdog_pid":watcher_pid,"at":time.time()})
         status()
     finally:
         os.close(fd)
@@ -109,6 +124,35 @@ def install():
     dst.parent.mkdir(parents=True,exist_ok=True)
     shutil.copy2(Path(__file__).resolve(),dst)
     os.chmod(dst,0o700)
+    cli_src=Path(__file__).resolve().with_name("bridge")
+    cli_dst=HOME/".local/bin/bridge"
+    if cli_src.is_file():
+        shutil.copy2(cli_src,cli_dst)
+        os.chmod(cli_dst,0o700)
+    reboot_src=Path(__file__).resolve().with_name("bridge-reboot")
+    reboot_dst=HOME/".local/bin/bridge-reboot"
+    if reboot_src.is_file():
+        shutil.copy2(reboot_src,reboot_dst)
+        os.chmod(reboot_dst,0o700)
+    # Keep bootstrap version available before an A/B runtime is activated.
+    source_root=Path(__file__).resolve().parent.parent
+    version=run(["git","-C",str(source_root),"rev-parse","--short","HEAD"],check=False)
+    if version.returncode == 0:
+        version_dst=dst.with_name("bridge-version")
+        version_dst.write_text(version.stdout.strip()+"\n")
+        os.chmod(version_dst,0o600)
+    # Migrate Termux:Boot away from legacy checkouts before any recovery drain.
+    boot_src=Path(__file__).resolve().parent.parent/"autostart/20-codex-bridge"
+    boot_dir=HOME/".termux/boot"
+    boot_dst=boot_dir/"20-codex-bridge"
+    if boot_src.is_file():
+        boot_dir.mkdir(parents=True,exist_ok=True,mode=0o700)
+        if boot_dir.is_symlink() or not boot_dir.is_dir():
+            raise RuntimeError("unsafe_boot_directory")
+        tmp=boot_dir/".20-codex-bridge.tmp"
+        shutil.copy2(boot_src,tmp)
+        os.chmod(tmp,0o700)
+        os.replace(tmp,boot_dst)
     print(str(dst))
 
 def main():

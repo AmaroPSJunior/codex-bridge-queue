@@ -26,3 +26,13 @@ test('worker writes observations before final state, skips old schema and retain
   assert.ok(!JSON.stringify(h.logs).includes('sensitive'));
  }
 });
+
+test('provider refusal is published as failed instead of false success',async t=>{
+ const calls=[];const h=harness(t,'supabase-worker.js',{fetch:async(url,opts)=>{calls.push({url,body:JSON.parse(opts.body)});if(url.includes('/rpc/'))return {ok:true,text:async()=> 'true'};return {ok:true,text:async()=>''};}});
+ const refusal=run('groq');refusal.stdout=JSON.stringify({status:'completed',answer:"I'm sorry, but I can't help with that.",workspaceReleased:true});
+ h.set('t',task);h.set('r',refusal);await h.run('finish(t,r)');
+ const publication=calls.find(call=>call.url.includes('bridge_tasks?id='));
+ assert.equal(publication.body.status,'failed');
+ assert.match(publication.body.error,/Provider recusou/);
+ assert.notEqual(publication.body.progress_percent,100);
+});

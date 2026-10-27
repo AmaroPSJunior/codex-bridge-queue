@@ -14,10 +14,10 @@ function fixture(t){
  const runner=async spec=>{calls.push(spec);const a=spec.args;let stdout=a.includes('get-state')?'device\n':a.includes('ro.product.model')?model+'\n':a.includes('ro.build.version.sdk')?sdk+'\n':a.includes('install')?'Success\n':a.includes('sha256sum')?installedHash+'  /data/app/example/base.apk\n':'package:/data/app/example/base.apk\n';const code=a.includes('install')?installCode:0;return {code,stdout:JSON.stringify({status:code?'failed':'completed',workspaceReleased:true}),commandResult:{exit_code:code,stdout,stderr:'',error_code:code?'execution':null}};};
  return {home,dir,api:module.exports,runner,calls,options:{env:{HOME:home},taskId:'00000000-0000-4000-8000-000000000091'},setModel:v=>model=v,setSdk:v=>sdk=v,setHash:v=>installedHash=v,setInstallCode:v=>installCode=v};
 }
-const request={action:'apk103.install',target:'10.23.201.181:5555'};
-test('only pinned installation at exact target is exempt, never uninstall',()=>{
+const request={action:'apk103.install',target:'10.42.0.25:5555'};
+test('install policy is independent of DHCP address; uninstall still requires consent',()=>{
  assert.equal(real.requiresConsent(request),false);
- assert.equal(real.requiresConsent({...request,target:'10.23.201.182:5555'}),true);
+ assert.equal(real.requiresConsent({...request,target:'192.168.50.77:5555'}),false);
  assert.equal(real.requiresConsent({action:'app.uninstall',target:request.target}),true);
  for(const extra of [{apk:'/tmp/other.apk'},{package:'other'},{args:['uninstall']},{authorization:{}}])assert.throws(()=>real.validate({...request,...extra}));
 });
@@ -29,8 +29,9 @@ test('offline install pipeline has no consent setup, preserves data, verifies in
  const receipt=JSON.parse(fs.readFileSync(path.join(f.dir,crypto.createHash('sha256').update(f.options.taskId).digest('hex')+'.json')));
  assert.equal(receipt.status,'completed');assert.equal(receipt.authorization_policy,'owner-approved-pinned-install-or-read');
 });
-test('other target and uninstall still require signed consent before any process',async t=>{
- const f=fixture(t);for(const p of [{...request,target:'10.23.201.182:5555'},{...request,action:'app.uninstall'}])assert.equal((await f.api.execute(p,f.options,f.runner)).code,1);assert.equal(f.calls.length,0);
+test('a different private DHCP address is allowed; uninstall still requires signed consent',async t=>{
+ const f=fixture(t),other={...request,target:'192.168.50.77:5555'};assert.equal((await f.api.execute(other,f.options,f.runner)).code,0);
+ const g=fixture(t);assert.equal((await g.api.execute({...request,action:'app.uninstall'},g.options,g.runner)).code,1);assert.equal(g.calls.length,0);
 });
 test('wrong identity and incompatible Android block install',async t=>{
  for(const kind of ['model','sdk']){const f=fixture(t);if(kind==='model')f.setModel('OTHER DEVICE');else f.setSdk('23');assert.equal((await f.api.execute(request,f.options,f.runner)).code,1);assert.equal(f.calls.some(c=>c.args.includes('install')),false);}

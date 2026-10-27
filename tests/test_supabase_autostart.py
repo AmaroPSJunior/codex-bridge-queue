@@ -189,6 +189,8 @@ process.on('SIGTERM',()=>{clearInterval(timer);setTimeout(()=>{fs.appendFileSync
             supervisor_pid=json.loads((directory/'supervisor.json').read_text())['pid']
             old=json.loads((directory/'boot.json').read_text())['pid']
             local.LOGS=self.repo/'logs'
+            local.GLOBAL_RUNTIME=self.home/'.local/share/codex-bridge/runtime'
+            local.GLOBAL_LOCK=local.GLOBAL_RUNTIME/'supabase-worker.lock'
             with self.assertRaises(BlockingIOError):local.open_lock()
             request=directory/'00000000-0000-4000-8000-000000000071.json'
             request.write_text(json.dumps({'id':request.stem,'version':1,'command':'restart','status':'requested'}))
