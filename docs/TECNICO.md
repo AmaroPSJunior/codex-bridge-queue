@@ -1,5 +1,25 @@
 # Anexo técnico: arquitetura, instalação e manutenção
 
+## Acesso direto ao Codex da central por SSH
+
+O celular pode enviar uma instrução ao Codex do Termux da central pela conexão SSH `byd-central` e receber a resposta no terminal local. A autenticação usa uma chave Ed25519 dedicada em `~/.ssh/byd-central-termux`; não use senha em argumentos ou arquivos do projeto.
+
+Depois que a chave pública estiver em `~/.ssh/authorized_keys` no Termux da central, teste com:
+
+```sh
+ssh byd-central 'printf "SSH_OK\\n"; id; node --version; codex --version'
+```
+
+Envie uma tarefa e receba a resposta do Codex no celular:
+
+```sh
+npm run byd:codex -- --cwd ~/codebridge-device "Revise o estado do workspace e resuma os próximos passos."
+```
+
+O prompt também pode vir por stdin. O comando abre uma sessão SSH sem terminal, envia o texto por stdin e repassa a resposta por stdout. O Codex remoto usa `workspace-write` restrito ao diretório escolhido; o caminho deve ser absoluto ou começar por `~/`. Não use tarefas que interajam com ECUs, APIs do veículo, CAN ou comandos ADB direcionados à central automotiva.
+
+Para validar quoting e parsing localmente, rode `npm run test:byd`. Isso não autentica nem executa tarefas na central.
+
 Comece pelo [guia visual](GUIA.md). Este anexo descreve as garantias reais do código, incluindo limites que não devem ser confundidos com sucesso.
 
 ## Componentes e isolamento

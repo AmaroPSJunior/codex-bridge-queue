@@ -27,6 +27,7 @@ class ProvisionTest(unittest.TestCase):
   with tempfile.TemporaryDirectory() as root:
    directory=Path(root)/'public'
    directory.mkdir(mode=0o755)
+   directory.chmod(0o755)
    with self.assertRaises(ValueError):
     module.provision(directory,'BYD','android_head_unit')
 
