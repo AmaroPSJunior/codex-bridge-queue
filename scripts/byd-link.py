@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Phone-side BYD transport. Discovery is untrusted; SSH always checks the pinned key."""
 import concurrent.futures
+import fcntl
 import ipaddress
 import json
 import os
@@ -10,6 +11,7 @@ import select
 import shlex
 import socket
 import subprocess
+import struct
 import sys
 import time
 
@@ -21,7 +23,8 @@ PORT = 48022
 def private_ip(value):
     try:
         ip = ipaddress.IPv4Address(value)
-        return ip.is_private and not (ip.is_loopback or ip.is_link_local or ip.is_unspecified)
+        return any(ip in ipaddress.IPv4Network(net) for net in
+                   ('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'))
     except ipaddress.AddressValueError:
         return False
 
@@ -42,10 +45,31 @@ def ssh_args(config, ip):
 
 def authenticated(config, ip):
     try:
-        result = run(ssh_args(config, ip) + ['printf BYD_LINK_OK'], timeout=7)
+        # A ProxyCommand's stdin carries SSH protocol bytes, never give them to a probe.
+        result = run(ssh_args(config, ip) + ['-n', 'printf BYD_LINK_OK'], timeout=7)
         return result.returncode == 0 and result.stdout == 'BYD_LINK_OK'
     except (OSError, subprocess.TimeoutExpired, ValueError):
         return False
+
+
+def local_networks():
+    """Android blocks netlink; ordinary interface ioctls still expose our LAN addresses."""
+    networks = set()
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        for name in ('ap0', 'wlan0', 'wlan1', 'swlan0', 'p2p0', 'eth0'):
+            try:
+                query = struct.pack('256s', name.encode())
+                address = socket.inet_ntoa(fcntl.ioctl(sock.fileno(), 0x8915, query)[20:24])
+                mask = socket.inet_ntoa(fcntl.ioctl(sock.fileno(), 0x891b, query)[20:24])
+                if private_ip(address):
+                    network = ipaddress.IPv4Network((address, mask), strict=False)
+                    # Bound probes to at most 254 local addresses per interface.
+                    if network.prefixlen < 24:
+                        network = ipaddress.IPv4Network(address + '/24', strict=False)
+                    networks.add(network)
+            except (OSError, ValueError):
+                pass
+    return sorted(networks, key=str)
 
 
 def udp_candidates(seconds=3):
@@ -56,11 +80,20 @@ def udp_candidates(seconds=3):
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
         sock.bind(('0.0.0.0', 0))
         sock.settimeout(0.3)
+        # Hotspot broadcast is filtered on some Android versions. Unicast discovery
+        # stays within the phone's actual Wi-Fi/AP subnets and sends no commands.
+        destinations = {'255.255.255.255'}
+        for network in local_networks():
+            destinations.update(str(ip) for ip in network.hosts())
         deadline = time.monotonic() + seconds
         next_send = 0
         while time.monotonic() < deadline:
             if time.monotonic() >= next_send:
-                sock.sendto(request, ('255.255.255.255', PORT))
+                for destination in destinations:
+                    try:
+                        sock.sendto(request, (destination, PORT))
+                    except OSError:
+                        pass
                 next_send = time.monotonic() + 0.7
             try:
                 data, addr = sock.recvfrom(512)
